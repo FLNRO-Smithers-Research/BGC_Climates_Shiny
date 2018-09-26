@@ -1,0 +1,12 @@
+name: BGC_Climates_Shiny
+title: BGC_Climates_Shiny
+username:
+account: becweb
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 471800
+bundleId: 1608019
+url: https://becweb.shinyapps.io/BGC_Climates_Shiny/
+when: 1538003291.44868
+asMultiple: FALSE
+asStatic: FALSE
