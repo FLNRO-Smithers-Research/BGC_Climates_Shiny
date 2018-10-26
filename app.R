@@ -2,7 +2,7 @@
 ###for various different user selected statistics and graphics. 
 ###Kiri Daust, April 2018
 
-.libPaths("E:/R packages351")
+##.libPaths("E:/R packages351")
 require(shiny)
 require(reshape)
 require(shinyWidgets)
@@ -54,14 +54,15 @@ for (i in 1:length(zone.choose)){
 }
 ###read in model data
 #modelDat <- read.csv("WeatherStationLocations_updated_Normal_1961_1990MSY.csv",stringsAsFactors = FALSE)
-modelDat <- read.xlsx("ModelAtStationNormals.xlsx")
-stationDat <- read.xlsx("ClimateStationNormals.xlsx")
-modelDat <- merge(stationDat[,1:2], modelDat, by.x = "STATION",by.y = "ID1")
+modelDat <- read.csv("StPoints_ModelDat.csv")
+stationDat <- read.csv("StationSummary.csv")
+stationDat <- merge(modelDat[,1:2], stationDat, by = "STATION", all = FALSE)
+stationDat <- unique(stationDat)
 stationDat$BGC <- as.character(stationDat$BGC)
 stationDat$STATION <- as.character(stationDat$STATION)
 stn.BGC <- unique(stationDat$BGC)
 stn.BGC <- sort(stn.BGC)
-stn.var <- colnames(stationDat)[-c(1:2)]
+stn.var <- colnames(stationDat)[-c(1)]
 stn.var <- sort(stn.var)
 
 stn.list <- list()
