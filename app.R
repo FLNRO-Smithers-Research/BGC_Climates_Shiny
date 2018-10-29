@@ -62,7 +62,7 @@ stationDat$BGC <- as.character(stationDat$BGC)
 stationDat$STATION <- as.character(stationDat$STATION)
 stn.BGC <- unique(stationDat$BGC)
 stn.BGC <- sort(stn.BGC)
-stn.var <- colnames(stationDat)[-c(1)]
+stn.var <- colnames(stationDat)[-c(1,2)]
 stn.var <- sort(stn.var)
 
 stn.list <- list()
@@ -230,6 +230,7 @@ ui <- fluidPage(theme = shinytheme("slate"),
                                   "Select Variables",
                                   choices = stn.var,
                                   multiple = TRUE),
+                      actionButton("removeNA", "Remove NAs"),
                       downloadButton('downloadStn', 'Download Data')),
                column(5,
                       titlePanel("Summarised by BGC"),
@@ -559,15 +560,12 @@ server <- function(input, output) {
     do.call(tagList, stnPlotOutput)
   })
   
-  ###loop through selected variables
-  for (j in 1:50){
+for (j in 1:50){
+    
     local({
       my_j <- j
-      plotname <- paste("StnPlot", my_j, sep= "")
-      
-      output[[plotname]] <- renderPlot({
+      stPrep <- reactive({
         modelSub <- modelDat[modelDat$STATION %in% input$stn.pick,c("STATION", input$var.pick[my_j])]
-        if(length(input$stn.pick) > 0 & length(input$var.pick) > 0){
         colnames(modelSub) <- c("Station","Mean")
         modelSub$Type <- "Model"
         stationSub <- stationDat[stationDat$STATION %in% input$stn.pick, c("STATION",input$var.pick[my_j])]
@@ -576,6 +574,22 @@ server <- function(input, output) {
         dat <- rbind(modelSub,stationSub)
         dat <- dat[order(dat$Station),]
         dat$Type <- as.factor(dat$Type)
+        ##makeReactiveBinding(dat)
+        return(dat)
+      })
+      
+      
+      
+      plotname <- paste("StnPlot", my_j, sep= "")
+
+      output[[plotname]] <- renderPlot({
+        input$removeNA
+        if(length(input$stn.pick) > 0 & length(input$var.pick) > 0){
+          dat <- stPrep()
+          if(input$removeNA %% 2 == 1){
+            stNAs <- as.character(dat$Station[is.na(dat$Mean)])
+            dat <- dat[!dat$Station %in% stNAs,]
+          }
         ggplot(dat, aes(x = Station, y = Mean, fill = Type)) +
           geom_bar(position = position_dodge(), stat = "identity") +
           scale_fill_manual(values = c("Model" = "purple","Station" = "darkgreen"))+
@@ -587,6 +601,8 @@ server <- function(input, output) {
       })
     })
   }
+  
+  
   
   ###function to clean station data
   stnDat <- reactive({
