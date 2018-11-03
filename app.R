@@ -230,7 +230,7 @@ ui <- fluidPage(theme = shinytheme("slate"),
                                   "Select Variables",
                                   choices = stn.var,
                                   multiple = TRUE),
-                      actionButton("removeNA", "Remove NAs"),
+                      actionButton("removeNA", "Include NAs"),
                       downloadButton('downloadStn', 'Download Data')),
                column(5,
                       titlePanel("Summarised by BGC"),
@@ -586,7 +586,7 @@ for (j in 1:50){
         input$removeNA
         if(length(input$stn.pick) > 0 & length(input$var.pick) > 0){
           dat <- stPrep()
-          if(input$removeNA %% 2 == 1){
+          if(input$removeNA %% 2 == 0){
             stNAs <- as.character(dat$Station[is.na(dat$Mean)])
             dat <- dat[!dat$Station %in% stNAs,]
           }
@@ -606,20 +606,26 @@ for (j in 1:50){
   
   ###function to clean station data
   stnDat <- reactive({
-    modelSub <- modelDat[modelDat$STATION %in% input$stn.pick,c("STATION", "BGC", input$var.pick)]
-    colnames(modelSub)[1:2] <- c("Station","BGC")
+    modelSub <- modelDat[modelDat$STATION %in% input$stn.pick,c("STATION", input$var.pick)]
+    colnames(modelSub)[1] <- "Station"
     modelSub$Type <- "Model"
-    stationSub <- stationDat[stationDat$STATION %in% input$stn.pick, c("STATION","BGC", input$var.pick)]
-    colnames(stationSub)[1:2] <- c("Station","BGC")
+    stationSub <- stationDat[stationDat$STATION %in% input$stn.pick, c("STATION",input$var.pick)]
+    colnames(stationSub)[1] <- "Station"
     stationSub$Type <- "Station"
     dat <- rbind(modelSub,stationSub)
-    datLong <- melt(dat, variable_name = "ClimVar")
-    dat <- cast(datLong, Station+BGC+ClimVar~Type)
-    dat <- as.data.frame(dat)
-    dat <- dat[order(dat$ClimVar, dat$BGC),]
+    dat <- dat[order(dat$Type, dat$Station),]
+    dat <- dat[!is.na(rowSums(dat[,-c(1,length(dat))],na.rm = TRUE)),]
+    dat <- unique(dat)
     return(dat)
   })
-
+  
+  output$downloadStn <- downloadHandler(
+    filename = "ClimStation.csv",
+    content = function(file){
+      write.csv(stnDat(), file)
+    }
+  )
+  
 ###create station summary plots
 output$stnSumPlots <- renderUI({
   stnSumVars <- input$var.pick
@@ -674,12 +680,7 @@ output$selectStn <- renderUI({
               multiple = TRUE, selected = NULL, options = list(`actions-box` = TRUE))
 })
 
-output$downloadStn <- downloadHandler(
-  filename = "ClimStation.csv",
-  content = function(file){
-    write.csv(stnDat(), file)
-  }
-)
+
 
 ##animated PCA
 output$climPCA <- renderImage({

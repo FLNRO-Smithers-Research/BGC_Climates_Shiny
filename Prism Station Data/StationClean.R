@@ -53,7 +53,7 @@ pptOut <- foreach(st = stNames, .combine = rbind) %do% {
     pptAt <- sum(sub$Value[sub$Month %in% at])
   }
   if(!any(is.na(sub$Value[sub$Month %in% meanSm]))){
-    MSP <- mean(sub$Value[sub$Month %in% meanSm])
+    MSP <- sum(sub$Value[sub$Month %in% meanSm])
   }
   
   out <- data.frame(St_ID = st, Long = sub$Long[1], Lat = sub$Lat[1], MAP = MAP, PPT_wt = pptWt, PPT_sp = pptSp, PPT_sm = pptSm,
@@ -156,6 +156,9 @@ outVars <- c("St_ID","PPT_sp", "PPT_sm", "PPT_at", "PPT_wt", "Tmax_sp", "Tmax_sm
              "Tmin_sm", "Tmin_at", "Tmin_wt","Tave_sp","Tave_sm", "Tave_at", "Tave_wt", 
              "MSP", "MAP", "MAT", "MWMTAve", "MCMTAve", "TD", "AHM", "SHM") ###variables to export
 StationOut <- aveTemp[,outVars]
+colnames(StationOut) <- c("STATION","PPT_sp", "PPT_sm", "PPT_at", "PPT_wt", "Tmax_sp", "Tmax_sm", "Tmax_at", "Tmax_wt",
+                          "Tmin_sp", "Tmin_sm", "Tmin_at", "Tmin_wt","Tave_sp","Tave_sm", "Tave_at", "Tave_wt", 
+             "MSP", "MAP", "MAT", "MWMT", "MCMT", "TD", "AHM", "SHM")
 write.csv(StationOut, "StationSummary.csv", row.names = FALSE) ###Final data set
 
 ####Now create list of all stations for climateBC
@@ -234,3 +237,34 @@ solveTowers <- function(n, source, destination, spare){
     solveTowers(n-1, spare, destination, source)
   }
 }
+
+#######
+install.packages("sn")
+library(sn)
+f1 <- makeSECdistr(dp=c(3,2,5), family="SN", name="First-SN")
+show(f1)
+summary(f1)
+plot(f11)
+plot(f1, probs=c(0.1, 0.9))
+#
+f2 <- makeSECdistr(dp=c(3, 5, -4, 8), family="ST", name="First-ST")
+f9 <- makeSECdistr(dp=c(5, 1, Inf, 0.5), family="ESN", name="ESN,alpha=Inf")
+#
+dp0 <- list(xi=1:2, Omega=diag(3:4), alpha=c(3, -5))
+f10 <- makeSECdistr(dp=dp0, family="SN", name="SN-2d", compNames=c("u1", "u2"))
+#
+dp1 <- list(xi=1:2, Omega=diag(1:2)+outer(c(3,3),c(2,2)), alpha=c(-3, 5), nu=6)
+f11 <- makeSECdistr(dp=dp1, family="ST", name="ST-2d", compNames=c("t1", "t2"))
+
+data(ais)
+m1 <- selm(log(Fe) ~ BMI + LBM, family="SN", data=ais)
+print(m1)
+summary(m1)
+s<- summary(m1, "DP", cov=TRUE, cor=TRUE)
+plot(m1)
+
+plot(m1, param.type="DP")
+logLik(m1)
+coef(m1)
+coef(m1, "DP")
+var <- vcov(m1)
