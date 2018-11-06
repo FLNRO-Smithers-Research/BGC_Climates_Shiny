@@ -56,7 +56,7 @@ pptOut <- foreach(st = stNames, .combine = rbind) %do% {
     MSP <- sum(sub$Value[sub$Month %in% meanSm])
   }
   
-  out <- data.frame(St_ID = st, Long = sub$Long[1], Lat = sub$Lat[1], MAP = MAP, PPT_wt = pptWt, PPT_sp = pptSp, PPT_sm = pptSm,
+  out <- data.frame(St_ID = st,Name = sub$Name[1], Long = sub$Long[1], Lat = sub$Lat[1], MAP = MAP, PPT_wt = pptWt, PPT_sp = pptSp, PPT_sm = pptSm,
                     PPT_at = pptAt, MSP = MSP)
   out
 }
@@ -94,7 +94,7 @@ tMin <- foreach(st = stNames, .combine = rbind) %do% {
   if(!any(is.na(sub$Value[sub$Month %in% at]))){
     Tmin_at <- mean(sub$Value[sub$Month %in% at])
   }
-  out <- data.frame(St_ID = st, Long = sub$Long[1], Lat = sub$Lat[1], MeanMin = MeanMin, Tmin_wt = Tmin_wt, Tmin_sp = Tmin_sp, Tmin_sm = Tmin_sm, 
+  out <- data.frame(St_ID = st, Name = sub$Name[1], Long = sub$Long[1], Lat = sub$Lat[1], MeanMin = MeanMin, Tmin_wt = Tmin_wt, Tmin_sp = Tmin_sp, Tmin_sm = Tmin_sm, 
                     Tmin_at = Tmin_at, MCMTmin = MCMT, MWMTmin = MWMT)
   out
 }
@@ -132,7 +132,7 @@ tMax <- foreach(st = stNames, .combine = rbind) %do% {
   if(!any(is.na(sub$Value[sub$Month %in% at]))){
     Tmin_at <- mean(sub$Value[sub$Month %in% at])
   }
-  out <- data.frame(St_ID = st, Long = sub$Long[1], Lat = sub$Lat[1], MeanMax = MeanMin, Tmax_wt = Tmin_wt, Tmax_sp = Tmin_sp, Tmax_sm = Tmin_sm, 
+  out <- data.frame(St_ID = st,Name = sub$Name[1], Long = sub$Long[1], Lat = sub$Lat[1], MeanMax = MeanMin, Tmax_wt = Tmin_wt, Tmax_sp = Tmin_sp, Tmax_sm = Tmin_sm, 
                     Tmax_at = Tmin_at, MCMTmax = MCMT, MWMTmax = MWMT)
   out
 }
@@ -152,11 +152,11 @@ aveTemp <- within(aveTemp, {Tave_sp <- (Tmin_sp+Tmax_sp)/2
        Tave_at <- (Tmin_at+Tmax_at)/2 
        Tave_wt <- (Tmin_wt+Tmax_wt)/2})
 
-outVars <- c("St_ID","PPT_sp", "PPT_sm", "PPT_at", "PPT_wt", "Tmax_sp", "Tmax_sm", "Tmax_at", "Tmax_wt","Tmin_sp", 
+outVars <- c("St_ID","Name.x","PPT_sp", "PPT_sm", "PPT_at", "PPT_wt", "Tmax_sp", "Tmax_sm", "Tmax_at", "Tmax_wt","Tmin_sp", 
              "Tmin_sm", "Tmin_at", "Tmin_wt","Tave_sp","Tave_sm", "Tave_at", "Tave_wt", 
              "MSP", "MAP", "MAT", "MWMTAve", "MCMTAve", "TD", "AHM", "SHM") ###variables to export
 StationOut <- aveTemp[,outVars]
-colnames(StationOut) <- c("STATION","PPT_sp", "PPT_sm", "PPT_at", "PPT_wt", "Tmax_sp", "Tmax_sm", "Tmax_at", "Tmax_wt",
+colnames(StationOut) <- c("STATION","Name", "PPT_sp", "PPT_sm", "PPT_at", "PPT_wt", "Tmax_sp", "Tmax_sm", "Tmax_at", "Tmax_wt",
                           "Tmin_sp", "Tmin_sm", "Tmin_at", "Tmin_wt","Tave_sp","Tave_sm", "Tave_at", "Tave_wt", 
              "MSP", "MAP", "MAT", "MWMT", "MCMT", "TD", "AHM", "SHM")
 write.csv(StationOut, "StationSummary.csv", row.names = FALSE) ###Final data set

@@ -56,13 +56,13 @@ for (i in 1:length(zone.choose)){
 #modelDat <- read.csv("WeatherStationLocations_updated_Normal_1961_1990MSY.csv",stringsAsFactors = FALSE)
 modelDat <- read.csv("StPoints_ModelDat.csv")
 stationDat <- read.csv("StationSummary.csv")
-stationDat <- merge(modelDat[,1:2], stationDat, by = "STATION", all = FALSE)
+stationDat <- merge(modelDat[,1:5], stationDat, by = "STATION", all = FALSE)
 stationDat <- unique(stationDat)
 stationDat$BGC <- as.character(stationDat$BGC)
 stationDat$STATION <- as.character(stationDat$STATION)
 stn.BGC <- unique(stationDat$BGC)
 stn.BGC <- sort(stn.BGC)
-stn.var <- colnames(stationDat)[-c(1,2)]
+stn.var <- colnames(stationDat)[-c(1:6)]
 stn.var <- sort(stn.var)
 
 stn.list <- list()
@@ -606,23 +606,21 @@ for (j in 1:50){
   
   ###function to clean station data
   stnDat <- reactive({
-    modelSub <- modelDat[modelDat$STATION %in% input$stn.pick,c("STATION", input$var.pick)]
-    colnames(modelSub)[1] <- "Station"
-    modelSub$Type <- "Model"
-    stationSub <- stationDat[stationDat$STATION %in% input$stn.pick, c("STATION",input$var.pick)]
-    colnames(stationSub)[1] <- "Station"
-    stationSub$Type <- "Station"
-    dat <- rbind(modelSub,stationSub)
-    dat <- dat[order(dat$Type, dat$Station),]
-    dat <- dat[!is.na(rowSums(dat[,-c(1,length(dat))],na.rm = TRUE)),]
-    dat <- unique(dat)
-    return(dat)
+    stationSub <- stationDat[stationDat$STATION %in% input$stn.pick, c("STATION","Name","BGC","Latitude","Longitude","Elevation",stn.var)]
+    stationSub <- stationSub[rowSums(stationSub[,-c(1:6)], na.rm = TRUE) != 0,]
+    modelSub <- modelDat[modelDat$STATION %in% input$stn.pick,c("STATION", stn.var)]
+    modelSub <- unique(modelSub)
+    stnBoth <- merge(stationSub, modelSub, by = "STATION", suffixes = c("_Station","_Model"), all.x = TRUE)
+    colnames(stnBoth)[1] <- "St_ID"
+    stnBoth <- stnBoth[stnBoth$St_ID %in% unique(stnBoth$St_ID),]
+    stnBoth <- stnBoth[order(stnBoth$Name),]
+    return(stnBoth)
   })
   
   output$downloadStn <- downloadHandler(
     filename = "ClimStation.csv",
     content = function(file){
-      write.csv(stnDat(), file)
+      write.csv(stnDat(), file, row.names = FALSE)
     }
   )
   
