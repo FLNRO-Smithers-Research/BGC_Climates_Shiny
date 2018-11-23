@@ -5,6 +5,7 @@
 ##.libPaths("E:/R packages351")
 require(shiny)
 require(reshape)
+require(reshape2)
 require(shinyWidgets)
 require(ggplot2)
 require(climatol)
@@ -54,7 +55,8 @@ for (i in 1:length(zone.choose)){
 }
 ###read in model data
 #modelDat <- read.csv("WeatherStationLocations_updated_Normal_1961_1990MSY.csv",stringsAsFactors = FALSE)
-modelDat <- read.csv("StPoints_ModelDat.csv")
+modelDat <- read.csv("StPoints_Model81-10.csv")
+modelReg <- read.csv("StPoints_Model61-90.csv")
 stationDat <- read.csv("StationSummary.csv")
 stationDat <- merge(modelDat[,1:5], stationDat, by = "STATION", all = FALSE)
 stationDat <- unique(stationDat)
@@ -230,7 +232,11 @@ ui <- fluidPage(theme = shinytheme("slate"),
                                   "Select Variables",
                                   choices = stn.var,
                                   multiple = TRUE),
+                      print("Show stations with difference > specified amount"),
+                      numericInput("maxDiff","",
+                                   value = 0, max = 100, min = 0),
                       actionButton("removeNA", "Include NAs"),
+                      actionButton("showNorm","Show Standard Noramal Data"),
                       downloadButton('downloadStn', 'Download Data')),
                column(5,
                       titlePanel("Summarised by BGC"),
@@ -242,7 +248,9 @@ ui <- fluidPage(theme = shinytheme("slate"),
              ),
              fluidRow(
                column(7,
-                      uiOutput("stnPlots")),
+                      uiOutput("stnPlots"),
+                      titlePanel("Density of Difference"),
+                      plotOutput("diffDens")),
                column(5,
                       uiOutput("stnSumPlots"))
              ))
@@ -568,10 +576,13 @@ for (j in 1:50){
         modelSub <- modelDat[modelDat$STATION %in% input$stn.pick,c("STATION", input$var.pick[my_j])]
         colnames(modelSub) <- c("Station","Mean")
         modelSub$Type <- "Model"
+        m.oldSub <- modelReg[modelReg$STATION %in% input$stn.pick,c("STATION", input$var.pick[my_j])]
+        colnames(m.oldSub) <- c("Station","Mean")
+        m.oldSub$Type <- "Model61-90"
         stationSub <- stationDat[stationDat$STATION %in% input$stn.pick, c("STATION",input$var.pick[my_j])]
         colnames(stationSub) <- c("Station","Mean")
         stationSub$Type <- "Station"
-        dat <- rbind(modelSub,stationSub)
+        dat <- rbind(modelSub,stationSub,m.oldSub)
         dat <- dat[order(dat$Station),]
         dat$Type <- as.factor(dat$Type)
         ##makeReactiveBinding(dat)
@@ -586,13 +597,23 @@ for (j in 1:50){
         input$removeNA
         if(length(input$stn.pick) > 0 & length(input$var.pick) > 0){
           dat <- stPrep()
+          dat2 <- dcast(dat, Station ~ Type, value.var = "Mean", fun.aggregate = mean)
+          colnames(dat2)[1] <- "ID"
+          dat2$Diff <- apply(dat2[,c("Model","Station")],1,FUN = function(x){(1-(min(x)/max(x)))*100})
+          dat2$Diff[is.na(dat2$Diff)] <- 0
+          dat <- dat[dat$Station %in% dat2$ID[dat2$Diff >= input$maxDiff],]
+          
           if(input$removeNA %% 2 == 0){
             stNAs <- as.character(dat$Station[is.na(dat$Mean)])
             dat <- dat[!dat$Station %in% stNAs,]
           }
+          if(input$showNorm %% 2 == 0){
+            dat <- dat[dat$Type != "Model61-90",]
+          }
+          
         ggplot(dat, aes(x = Station, y = Mean, fill = Type)) +
           geom_bar(position = position_dodge(), stat = "identity") +
-          scale_fill_manual(values = c("Model" = "purple","Station" = "darkgreen"))+
+          scale_fill_manual(values = c("Model" = "purple","Station" = "darkgreen","Model61-90" = "red"))+
           theme_bw() + theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())+
           {if(length(dat$Station) > 12)theme(axis.text.x = element_text(angle = 90, hjust = 1))}+
           ggtitle(input$var.pick[my_j])
@@ -615,6 +636,46 @@ for (j in 1:50){
     stnBoth <- stnBoth[stnBoth$St_ID %in% unique(stnBoth$St_ID),]
     stnBoth <- stnBoth[order(stnBoth$Name),]
     return(stnBoth)
+  })
+  
+  ###create plot with density distributions showing difference between station and model data
+  output$diffDens <- renderPlot({
+    if(length(input$stn.pick) > 0 & length(input$var.pick) > 0){
+      stationSub <- stationDat[stationDat$STATION %in% input$stn.pick, c("STATION","Name",input$var.pick)]
+      ##stationSub <- stationSub[rowSums(stationSub[,-c(1:2)], na.rm = TRUE) != 0,]
+      modelSub <- modelDat[modelDat$STATION %in% input$stn.pick,c("STATION", input$var.pick)]
+      modelSub <- unique(modelSub)
+      stnBoth <- merge(stationSub, modelSub, by = "STATION", suffixes = c("_Station","_Model"), all.x = TRUE)
+      colnames(stnBoth)[1] <- "St_ID"
+      stnBoth <- melt(stnBoth, id.vars = c("St_ID","Name"))
+      stnBoth$Type <- ifelse(grepl("Station",stnBoth$variable), "Station","Model")
+      stnBoth$variable <- gsub("_Station|_Model","",stnBoth$variable)
+      stnBoth <- stnBoth[!is.na(stnBoth$value),]
+      diffFun <- function(x){
+        return (x[1]-x[2])
+      }
+      temp <- dcast(stnBoth, St_ID + Name ~ variable, value.var = "value", fun.aggregate = diffFun)
+      if(length(input$var.pick) == 1){
+        cols <- "black"
+        dat <- temp[,3]
+        dat <- dat[!is.na(dat)]
+        plot(density(dat), main = "Density")
+      }else{
+        plot(0,0, xlim = c(max(-2, min(temp[,-(1:2)], na.rm = TRUE)), min(3,max(temp[,-(1:2)], na.rm = TRUE))), ylim = c(0,1.5))
+        cols <- rainbow(length(input$var.pick))
+        j <- 1
+        for(i in input$var.pick){
+          dat <- temp[,i]
+          dat <- dat[!is.na(dat)]
+          ##dat <- dat/sum(dat)
+          lines(density(dat), col = cols[j])
+          j <- j+1
+        }
+      }
+      
+      legend("topleft", legend = input$var.pick, fill = cols)
+    }
+    
   })
   
   output$downloadStn <- downloadHandler(
