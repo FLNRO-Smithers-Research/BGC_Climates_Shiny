@@ -20,6 +20,7 @@ sp <- c("Mar","April","May")
 sm <- c("June","July","Aug")
 at <- c("Sept","Oct","Nov")
 meanSm <- c("May","June","July","Aug","Sept")
+pptWt <- c("Oct","Nov","Dec","Jan","Feb","Mar")
 
 wd <- tk_choose.dir(); setwd(wd)
 
@@ -36,7 +37,7 @@ stNames <- unique(dat$St_ID)
 ###loop through each station id, and calculate each variable if no NAs
 pptOut <- foreach(st = stNames, .combine = rbind) %do% {
   sub <- dat[dat$St_ID == st,]
-  MAP <- NA; pptWt <- NA; pptSp <- NA; pptSm <- NA; pptAt <- NA; MSP <- NA###Set initial value to NA
+  MAP <- NA; pptWt <- NA; pptSp <- NA; pptSm <- NA; pptAt <- NA; MSP <- NA; MWP <- NA###Set initial value to NA
   if(!any(is.na(sub$Value))){
     MAP <- sum(sub$Value)
   }
@@ -54,6 +55,9 @@ pptOut <- foreach(st = stNames, .combine = rbind) %do% {
   }
   if(!any(is.na(sub$Value[sub$Month %in% meanSm]))){
     MSP <- sum(sub$Value[sub$Month %in% meanSm])
+  }
+  if(!any(is.na(sub$Value[sub$Month %in% pptWt]))){
+    MWP <- sum(sub$Value[sub$Month %in% pptWt])
   }
   
   out <- data.frame(St_ID = st,Name = sub$Name[1], Long = sub$Long[1], Lat = sub$Lat[1], MAP = MAP, PPT_wt = pptWt, PPT_sp = pptSp, PPT_sm = pptSm,
