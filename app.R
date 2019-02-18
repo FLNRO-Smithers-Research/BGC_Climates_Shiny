@@ -1,8 +1,7 @@
 ###This shiny app imports a dataset of future and historic climate summaries, and allows choices
 ###for various different user selected statistics and graphics. 
 ###Kiri Daust, April 2018
-
-##.libPaths("E:/R packages351")
+.libPaths("E:/R packages351")
 require(shiny)
 require(reshape)
 require(reshape2)
