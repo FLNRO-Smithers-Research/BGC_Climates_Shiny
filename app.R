@@ -1,25 +1,26 @@
 ###This shiny app imports a dataset of future and historic climate summaries, and allows choices
 ###for various different user selected statistics and graphics. 
-###Kiri Daust, April 2018
-.libPaths("E:/R packages351")
+###Kiri Daust, June 2019
+
 require(shiny)
-require(reshape)
 require(reshape2)
 require(shinyWidgets)
 require(ggplot2)
-require(climatol)
 require(vegan)
 require(shinythemes)
-require(openxlsx)
-require(gganimate)
-require(ggConvexHull)
 require(devtools)
-require(animation)
-require(magick)
+require(leaflet)
+require(data.table)
+require(sf)
+require(climatol)
+require(sp)
+require(shinyBS)
+require(shinyjs)
+require(scales)
 
 ###Read in climate summary data
-climSummary <- read.csv("ClimateSummaryCurrent_v11_5.6.csv", stringsAsFactors = FALSE)
-futureSummary <- read.csv("ClimateSummary_Future_v11_5.6.csv", stringsAsFactors = FALSE)
+climSummary <- fread("ClimateSummaryCurrent_v11_5.6.csv", data.table = F)
+futureSummary <- fread("ClimateSummary_Future_v11_5.6.csv", data.table = F)
 futureSummary$period <- as.character(futureSummary$period)
 ####Set up choices
 BGC.choose <- as.character(unique(climSummary$BGC))
@@ -54,9 +55,9 @@ for (i in 1:length(zone.choose)){
 }
 ###read in model data
 #modelDat <- read.csv("WeatherStationLocations_updated_Normal_1961_1990MSY.csv",stringsAsFactors = FALSE)
-modelDat <- read.csv("StPoints_Model81-10.csv")
-modelReg <- read.csv("StPoints_Model61-90.csv")
-stationDat <- read.csv("StationSummary.csv")
+modelDat <- fread("StPoints_Model81-10.csv", data.table = FALSE)
+modelReg <- fread("StPoints_Model61-90.csv", data.table = FALSE)
+stationDat <- fread("StationSummary.csv", data.table = FALSE)
 stationDat <- merge(modelDat[,1:5], stationDat, by = "STATION", all = FALSE)
 stationDat <- unique(stationDat)
 stationDat$BGC <- as.character(stationDat$BGC)
@@ -65,6 +66,14 @@ stn.BGC <- unique(stationDat$BGC)
 stn.BGC <- sort(stn.BGC)
 stn.var <- colnames(stationDat)[-c(1:6)]
 stn.var <- sort(stn.var)
+stnModDiff <- fread("StnModelDiff2.csv",data.table = FALSE)
+stnDiff.var <- colnames(stnModDiff)[-c(1:6)]
+stnMeanDiff <- fread("StnBGCMeanDiff.csv", data.table = FALSE)
+mapData <- fread("GridForMapsAll.csv", data.table = FALSE)
+mapVar.choose <- colnames(mapData)[-c(1:5)]
+mapMod.choose <- unique(mapData$GCM)
+mapFut.choose <- c(2025,2055,2085)
+mapScn.choose <- c("rcp45","rcp85")
 
 stn.list <- list()
 for(i in 1:length(stn.BGC)){
@@ -73,155 +82,166 @@ for(i in 1:length(stn.BGC)){
   stn.list[[name]] <- temp
 }
 
+radioTooltip <- function(id, choice, title, placement = "bottom", trigger = "hover", options = NULL){##function from StackOverflow for tooltips
+  
+  options = shinyBS:::buildTooltipOrPopoverOptionsList(title, placement, trigger, options)
+  options = paste0("{'", paste(names(options), options, sep = "': '", collapse = "', '"), "'}")
+  bsTag <- shiny::tags$script(shiny::HTML(paste0("
+    $(document).ready(function() {
+      setTimeout(function() {
+        $('input', $('#", id, "')).each(function(){
+          if(this.getAttribute('value') == '", choice, "') {
+            opts = $.extend(", options, ", {html: true});
+            $(this.parentElement).tooltip('destroy');
+            $(this.parentElement).tooltip(opts);
+          }
+        })
+      }, 500)
+    });
+  ")))
+  htmltools::attachDependencies(bsTag, shinyBS:::shinyBSDep)
+}
+
+icons <- awesomeIcons(icon = "circle",  markerColor = "blue", iconColor = "#ffffff", library = "fa")
+
 ####USER INTERFACE########################
-ui <- fluidPage(theme = shinytheme("slate"),
-  tabsetPanel(
-    tabPanel("Summary", ####First tab: Summary
-             fluidRow(
-               column(2,
-                      titlePanel("Select Input"), ###Select which summary data to use
-                      pickerInput("data",
-                                  "Select which summary to use",
-                                  choices = c("ClimateSummaryCurrent_v11_5.6.csv", "ClimateSummaryCurrent_v10_5.5.csv"),
-                                  selected = "ClimateSummaryCurrent_v11_5.6.csv",
-                                  multiple = FALSE),
-                      
-                        pickerInput(inputId = "BGC.choose",###Select BGCs
-                                    label = "Select BGCs for Summary",
-                                    choices = BGC.list, 
-                                    selected = NULL, multiple = TRUE),
-                      htmlOutput("periodSelect"), ###Select periods (changes based on user input)
-                      dropdown( ###Select variables
-                        pickerInput("annual",
-                                    "Select Annual Variables:",
-                                    choices = annual,
-                                    inline = FALSE,
-                                    multiple = TRUE,
-                                    selected = NULL, options = list(`actions-box` = TRUE)),
-                        pickerInput("seasonal",
-                                    "Select Seasonal Variables:",
-                                    choices = seasonal,
-                                    inline = FALSE,
-                                    multiple = TRUE,
-                                    selected = NULL, options = list(`actions-box` = TRUE)),
-                        pickerInput("monthly",
-                                    "Select Monthly Variables:",
-                                    choices = monthly,
-                                    inline = FALSE,
-                                    multiple = TRUE,
-                                    selected = NULL, options = list(`actions-box` = TRUE)),
-                      circle = FALSE, label = "ClimateVars",status = "primary"),
-                      
-                      ####Select choices for graphs
-                      awesomeRadio("Error",
-                                   "Select Error Type:",
-                                   choices = c("st.dev.Geo","st.dev.Ann"),
-                                   selected = "st.dev.Geo",
-                                   inline = FALSE),
-                      awesomeRadio("Scenario",
-                                   "Select Future Scenario",
-                                   choices = futScn,
-                                   selected = "rcp85",
-                                   inline = FALSE),
-                      awesomeRadio("futError",
-                                   "Select Future Error Type",
-                                   choices = c("SD.mod","SD.Geo"),
-                                   selected = "SD.mod",
-                                   inline = FALSE),
-                      awesomeRadio("grType",
-                                   "Choose Graph Type",
-                                   choices = c("Bar","Boxplot","Line"),
-                                   selected = "Bar",
-                                   inline = FALSE)
-               ),
-               column(6, ###choose how to format data
-                      titlePanel("Data"), 
-                      pickerInput("dataForm",
-                                  "Choose Data Format",
-                                  choices = c("BGCs as Columns","Timeperiods as Columns"),
-                                  selected = "BGCs as Columns",
-                                  multiple = FALSE),
-                      tableOutput("table"), 
-                      downloadButton('downloadTable', 'Download')),
-               column(4,
-                      titlePanel("Summary Figures"),
-                      uiOutput("plots"))
-             )
-    ),
+ui <- navbarPage(title = "BC Climate Summaries", theme = "css/bcgov.css",
+    tabPanel("Climate BC Summaries", ####First tab: Summary
+            useShinyjs(),
+            shinyjs::hidden(
+              div(id = "main",
+                  fluidRow(
+                    column(2,
+                           titlePanel("Select Input"), ###Select which summary data to use
+                           pickerInput("data",
+                                       "Select which summary to use",
+                                       choices = c("ClimateSummaryCurrent_v11_5.6.csv", "ClimateSummaryCurrent_v10_5.5.csv"),
+                                       selected = "ClimateSummaryCurrent_v11_5.6.csv",
+                                       multiple = FALSE),
+                           
+                           pickerInput(inputId = "BGC.choose",###Select BGCs
+                                       label = "Select BGCs for Summary",
+                                       choices = BGC.list, 
+                                       selected = NULL, multiple = TRUE),
+                           htmlOutput("periodSelect"), ###Select periods (changes based on user input)
+                           dropdown( ###Select variables
+                             pickerInput("annual",
+                                         "Select Annual Variables:",
+                                         choices = annual,
+                                         inline = FALSE,
+                                         multiple = TRUE,
+                                         selected = NULL, options = list(`actions-box` = TRUE)),
+                             pickerInput("seasonal",
+                                         "Select Seasonal Variables:",
+                                         choices = seasonal,
+                                         inline = FALSE,
+                                         multiple = TRUE,
+                                         selected = NULL, options = list(`actions-box` = TRUE)),
+                             pickerInput("monthly",
+                                         "Select Monthly Variables:",
+                                         choices = monthly,
+                                         inline = FALSE,
+                                         multiple = TRUE,
+                                         selected = NULL, options = list(`actions-box` = TRUE)),
+                             circle = FALSE, label = "ClimateVars",status = "primary"),
+                           
+                           ####Select choices for graphs
+                           awesomeRadio("Error",
+                                        "Select Error Type:",
+                                        choices = c("st.dev.Geo","st.dev.Ann"),
+                                        selected = "st.dev.Geo",
+                                        inline = FALSE),
+                           awesomeRadio("Scenario",
+                                        "Select Future Scenario",
+                                        choices = futScn,
+                                        selected = "rcp85",
+                                        inline = FALSE),
+                           awesomeRadio("futError",
+                                        "Select Future Error Type",
+                                        choices = c("SD.mod","SD.Geo"),
+                                        selected = "SD.mod",
+                                        inline = FALSE),
+                           awesomeRadio("grType",
+                                        "Choose Graph Type",
+                                        choices = c("Bar","Boxplot","Line"),
+                                        selected = "Bar",
+                                        inline = FALSE)
+                    ),
+                    radioTooltip(id = "Error", choice = "st.dev.Geo", title = "Geographical standard deviation (current)", placement = "right", trigger = "hover"),
+                    radioTooltip(id = "Error", choice = "st.dev.Ann", title = "Standard Deviation over time period (current)", placement = "right", trigger = "hover"),
+                    radioTooltip(id = "Scenario", choice = "rcp45", title = "Conservative Emission Projection", placement = "right", trigger = "hover"),
+                    radioTooltip(id = "Scenario", choice = "rcp85", title = "High Emission Projection", placement = "right", trigger = "hover"),
+                    radioTooltip(id = "futError", choice = "SD.mod", title = "Standard Deviation between future models", placement = "right", trigger = "hover"),
+                    radioTooltip(id = "futError", choice = "SD.Geo", title = "Future geographical standard deviation (ensemble model)", placement = "right", trigger = "hover"),
+                    column(6, ###choose how to format data
+                           titlePanel("Data"), 
+                           pickerInput("dataForm",
+                                       "Choose Data Format",
+                                       choices = c("BGCs as Columns","Timeperiods as Columns"),
+                                       selected = "BGCs as Columns",
+                                       multiple = FALSE),
+                           tableOutput("table"), 
+                           downloadButton('downloadTable', 'Download')),
+                    column(4,
+                           titlePanel("Summary Figures"),
+                           h4("ClimateBC Summary by BGC"),
+                           uiOutput("plots"),
+                           br(),
+                           br(),
+                           h4("Walter plot of BGC"),
+                           plotOutput("walterPlot"))
+                  )
+              )
+            ),
+            div(
+              id = "start",
+              h1("Welcome to the BC Climate Summary webtool!"),
+              p("The purpose of this tool is to make climate and climate change information easily accessible. The first tab provides an interface
+          to download and summarise climate data from Tongli Wang's Climate BC; data is summarised by Biogeoclimatic unit and time period (inlcuding 
+          modelled future periods). Select one or more time periods, BGCs, and climate variables to show the data. You can then download the data and view some 
+          summary graphs."),
+              p("The second tab allows for viewing of climate BC projections on a map: select a model, future climate scenario, and climate variable, and 
+          it will display time series and difference maps of the provincial data."),
+              p("The third tab contains tools for investigating climate station data and comparing to modelled data; either select stations within a BGC to compare station
+          data to climate BC data for that location, or view the location of stations on a map with a large difference from the model."),
+              br(),
+              actionButton("startBut", "Let's Get Started!"),
+              br(),
+              p("Please note that this tool is still being developed and will likely change frequently. While this information is accurate to the best
+          of our knowledge, it has not been officially approved by the BC Government."),
+              p("Site author: Kiri Daust - please send bug reports or suggestions to kiri.daust@gov.bc.ca")
+            )
+            
+            
+          )
+            ,
     
-    ###Tab 2: walter chart
-    tabPanel("WalterChart", 
-             fluidRow(
-               column(2,
-                        pickerInput("walterBGC",
-                                    "Select 1 BGC",
-                                    choices = BGC.list),
-                      
-                      dropdownButton(
-                        radioButtons("walterPeriod",
-                                     "Select 1 Period:",
-                                     choices = period.ts), circle = FALSE, label = "Period")
-                      
-                      ),
-               
-               column(10,
-                      titlePanel("Walter Figure"),
-                      plotOutput("walterPlot", height = "500px", width = "600px"),
-                      downloadButton('walterDown', 'Download Figure'),
-                      dropdownButton(
-                        radioButtons("wType",
-                                     "Select Download Format:",
-                                     choices = c("pdf","png")), circle = FALSE, label = "Download Type"))
-             )
-    ),
-    
-    ###Tab 3: Ordinations
-    tabPanel("nMDS_Chart",
-             fluidRow(
-               column(6,
-                      titlePanel("nMDS Plot"),
-                      dropdownButton(
-                        checkboxGroupInput("mdsZone",
-                                           "Select > 1 Zone:",
-                                           choices = zone.choose), circle = FALSE, label = "Zones"),
-                      dropdownButton(
-                        radioButtons("mdsPeriod",
-                                     "Select 1 Period:",
-                                     choices = period.choose), circle = FALSE, label = "Period"),
-                      awesomeRadio("vectors",
-                                   "Display Eigen Vectors?",
-                                   choices = c("No", "Yes"),
-                                   selected = "No"),
-                      
-                      plotOutput("mdsPlot", height = "500px", width = "600px"),
-                      downloadButton('mdsDown', 'Download Figure'),
-                      dropdownButton(
-                        radioButtons("mType",
-                                     "Select Download Format:",
-                                     choices = c("pdf","png")), circle = FALSE, label = "Download Type")
-                      
-             ),
-             column(6,
-                    titlePanel("Animated PCA"),
-                    pickerInput("zonePCA",
-                                "Select zones for PCA",
-                                choices = zone.choose,
-                                multiple = TRUE,
-                                selected = NULL),
-                    pickerInput("periodPCA",
-                                label = "Select periods for PCA animation",
-                                choices = period.ts,
-                                multiple = TRUE,
-                                selected = NULL, options = list(`actions-box` = TRUE)),
-                    imageOutput("climPCA", height = "500px", width = "600px"))
-             )
-    ),
+    tabPanel("Climate Maps",
+             titlePanel("BC Climate Variable Maps"),
+             h4("Select a GCM, scenario, future period, and climate variable to display a map 
+                representation."),
+             column(3,
+                    pickerInput("mapMod","Select GCM", choices = mapMod.choose, multiple = F),
+                    pickerInput("mapScn", "Select Future Climate Scenario", choices = mapScn.choose, multiple = F),
+                    pickerInput("mapVar", "Select Climate Variable", choices = mapVar.choose, multiple = F),
+                    br(),
+                    pickerInput("futForDiff","Select Future Period for Difference", choices = c(2025,2055,2085), multiple = F)),
+             column(9,
+                    h3("Time Series Maps"),
+                    plotOutput("climMap"),
+                    h3("Change Map"),
+                    plotOutput("climDiff"))),
     
     ###Tab 4: Station data
     tabPanel("StationData",
              fluidRow(
                column(7,
-                      titlePanel("Individual station and modelled data (1951-1980)"),
+                      titlePanel("Station and climateBC comparison"),
+                      p("Select one or more BGCs, climate stations within the BGCs, and variables of interest.
+                        Note that climateBC data is from the 1951-1980 period to match with the station data. You can 
+                        also view model data where station data is unavailable, declutter the data by only viewing stations
+                        with a big difference from climateBC, and view density plots of the difference between station and model
+                        data."),
                       pickerInput("StnBGC.pick",
                                   "Which BGC?",
                                   choices = stn.BGC,
@@ -231,18 +251,28 @@ ui <- fluidPage(theme = shinytheme("slate"),
                                   "Select Variables",
                                   choices = stn.var,
                                   multiple = TRUE),
-                      print("Show stations with difference > specified amount"),
+                      p("Show stations with difference > specified amount"),
                       numericInput("maxDiff","",
                                    value = 0, max = 100, min = 0),
                       actionButton("removeNA", "Include NAs"),
                       actionButton("showNorm","Show Standard Noramal Data"),
                       downloadButton('downloadStn', 'Download Data')),
                column(5,
-                      titlePanel("Summarised by BGC"),
-                      pickerInput("StnBGC.summ",
-                                  "Select additional BGCs for Summary",
-                                  choices = stn.BGC,
-                                  multiple = TRUE)
+                      titlePanel("Map of divergent stations"),
+                      h4("Choose whether to investigate divergence by station/model or by station/mean for BGC, then
+                         select variable of interest, and number of most divergent stations to display."),
+                      pickerInput("diffType",
+                                  "Select comparison type",
+                                  choices = c("Mean","Model"),
+                                  selected = "Model",
+                                  multiple = FALSE),
+                      pickerInput("stnDiffVar",
+                                  "Select Variable to Investigate",
+                                  choices = stnDiff.var,
+                                  selected = "MAT",
+                                  multiple = FALSE),
+                      numericInput("diffAmountMap","Select number of most divergent stations to display",
+                                   value = 5, max = 50, min = 0)
                       )
              ),
              fluidRow(
@@ -251,16 +281,19 @@ ui <- fluidPage(theme = shinytheme("slate"),
                       titlePanel("Density of Difference"),
                       plotOutput("diffDens")),
                column(5,
-                      uiOutput("stnSumPlots"))
+                      leafletOutput("stnDiffMap", height = "600px"))
              ))
-    
-  )
   
 )
              
 
 ####SERVER LOGIC#################
 server <- function(input, output) {
+  
+  observeEvent(input$startBut, {
+    shinyjs::hide("start")
+    shinyjs::show("main")
+  })
   
   chooseData <- reactive({
     dat <- read.csv(input$data, stringsAsFactors = FALSE)
@@ -319,7 +352,7 @@ server <- function(input, output) {
     
     if(length(selectBGC) > 0 & length(selectPer) > 0 & length(selectVars) > 0){
       molten <- melt(climSubset)
-        reShape <- cast(molten, period+Var+variable~BGC)
+        reShape <- dcast(molten, period+Var+variable~BGC)
         reShape <- reShape[order(reShape$variable),]
         reShape <- reShape[,c(1,3,2,4:length(reShape))]
         colnames(reShape)[1:3] <- c("TimePeriod","ClimateVar","Statistic")
@@ -351,12 +384,12 @@ server <- function(input, output) {
     if(length(selectBGC) > 0 & length(selectPer) > 0 & length(selectVars) > 0){
       molten <- melt(climSubset)
       if(input$dataForm == "BGCs as Columns"){
-        reShape <- cast(molten, period+Var+variable~BGC)
+        reShape <- dcast(molten, period+Var+variable~BGC)
         reShape <- reShape[order(reShape$variable),]
         reShape <- reShape[,c(1,3,2,4:length(reShape))]
         colnames(reShape)[1:3] <- c("TimePeriod","ClimateVar","Statistic")
       }else{
-        reShape <- cast(molten, BGC+Var+variable~period)
+        reShape <- dcast(molten, BGC+Var+variable~period)
         reShape <- reShape[order(reShape$variable),]
         reShape <- reShape[,c(1,3,2,4:length(reShape))]
         colnames(reShape)[1:3] <- c("BGC","ClimateVar","Statistic")
@@ -403,7 +436,7 @@ server <- function(input, output) {
           graph <- graph[,-2]
           graph <- as.data.frame(graph)
           graph <- melt(graph)
-          graph <- cast(graph, variable+TimePeriod~Statistic)
+          graph <- dcast(graph, variable+TimePeriod~Statistic)
           graph <- as.data.frame(graph)
           colnames(graph) <- c("BGC","Period","Mean","Error")
           graph <- graph[order(graph$Period),]
@@ -430,7 +463,7 @@ server <- function(input, output) {
           graph <- graph[,-2]
           graph <- as.data.frame(graph)
           graph <- melt(graph)
-          graph <- cast(graph, variable+TimePeriod~Statistic)
+          graph <- dcast(graph, variable+TimePeriod~Statistic)
           graph <- as.data.frame(graph)
           colnames(graph)[1:2] <- c("BGC","Period")
           graph <- graph[order(graph$Period),]
@@ -454,108 +487,33 @@ server <- function(input, output) {
   }
   
   
- ###prepare data for walter chart 
+  ###prepare data for walter chart 
   walterPrep <- reactive({
-    BGC <- input$walterBGC
-    Period <- input$walterPeriod
-    if(Period %in% c(2025,2055,2085)){
-      x1 <- futureSummary[futureSummary$BGC == BGC & futureSummary$period == Period & 
-                          futureSummary$Scenario == "rcp85",]
-    }else{
-      x1 <- climSummary[climSummary$BGC == BGC & climSummary$period == Period,]
-    }
-    ppt=subset(x1,x1$Var=="mean")[c(paste("PPT0",1:9,sep=""),paste("PPT",10:12,sep=""))]	
-    tmx=subset(x1,x1$Var=="mean")[c(paste("Tmax0",1:9,sep=""),paste("Tmax",10:12,sep=""))]	
-    tmn=subset(x1,x1$Var=="mean")[c(paste("Tmin0",1:9,sep=""),paste("Tmin",10:12,sep=""))]	
-    tmn2=subset(x1,x1$Var=="mean")[c(paste("DD_0_0",1:9,sep=""),paste("DD_0_",10:12,sep=""))]	
-    tmn2[which(tmn2>0)]=-16
-    tmn2[which(tmn2==0)]=15
-    waltMat <- rbind(as.matrix(ppt),as.matrix(tmx),
-                     as.matrix(tmn),as.matrix(tmn2))
-    return(waltMat)
-   
+      BGC <- input$BGC.choose[1]
+      Period <- 2025
+      if(Period %in% c(2025,2055,2085)){
+        x1 <- futureSummary[futureSummary$BGC %in% BGC & futureSummary$period == Period & 
+                              futureSummary$Scenario == "rcp85",]
+      }else{
+        x1 <- climSummary[climSummary$BGC %in% BGC & climSummary$period == Period,]
+      }
+      ppt=subset(x1,x1$Var=="mean")[c(paste("PPT0",1:9,sep=""),paste("PPT",10:12,sep=""))]	
+      tmx=subset(x1,x1$Var=="mean")[c(paste("Tmax0",1:9,sep=""),paste("Tmax",10:12,sep=""))]	
+      tmn=subset(x1,x1$Var=="mean")[c(paste("Tmin0",1:9,sep=""),paste("Tmin",10:12,sep=""))]	
+      tmn2=subset(x1,x1$Var=="mean")[c(paste("DD_0_0",1:9,sep=""),paste("DD_0_",10:12,sep=""))]	
+      tmn2[which(tmn2>0)]=-16
+      tmn2[which(tmn2==0)]=15
+      waltMat <- rbind(as.matrix(ppt),as.matrix(tmx),
+                       as.matrix(tmn),as.matrix(tmn2))
+      return(waltMat)
+
   })
   
   output$walterPlot <- renderPlot({
-    diagwl(walterPrep(), mlab="en", p3line=F, est=input$walterBGC, per=input$walterPeriod)
-  })
-  
-  ##Prepare for ordination
-  mdsPrep <- reactive({
-    climOrd <- climSummary
-    climOrd$Zone <- gsub("[[:lower:]]", "", climOrd$BGC)
-    climOrd$Zone <- gsub("[[:digit:]]", "", climOrd$Zone)
-    climOrd$Zone <- gsub("[[:blank:]]", "", climOrd$Zone)
-    climOrd <- climOrd[,c(length(climOrd),1:(length(climOrd)-1))]
-    climOrd <- climOrd[climOrd$period == input$mdsPeriod & climOrd$Var == "mean",]
-    climOrd <- climOrd[climOrd$Zone %in% input$mdsZone,]
-    return(climOrd)
-  })
-  
-  output$mdsPlot <- renderPlot({
-    if(length(input$mdsZone) >= 2){
-      climOrd <- mdsPrep()
-      MDS <- metaMDS(climOrd[,annual], distance = "euclidian", k = 2, trymax = 2000)
-      vectors <- envfit(MDS, climOrd[,annual], permutations = 999)
-      MDS.df <- as.data.frame(scores(MDS, display = "sites"))
-      MDS.df <- cbind(climOrd$Zone, MDS.df)
-      colnames(MDS.df)[1] <- "Zone"
-      vect.df <- as.data.frame(scores(vectors, display = "vectors"))
-      vect.df <- cbind(vect.df, Pval = vectors$vectors$pvals)
-      vect.df$ClimVar <- rownames(vect.df)
-      vect.df[,1:2] <- vect.df[,1:2]*(max(MDS.df[,2:3])*0.5)
-      
-      ggplot(MDS.df)+
-        geom_point(mapping = aes(x = NMDS1, y = NMDS2, colour = Zone), size = 3, shape = 17)+
-        coord_fixed()+
-        {if(input$vectors == "Yes") geom_segment(data = vect.df[vect.df$Pval < 0.01,], aes(x = 0, xend = NMDS1, y = 0, yend  = NMDS2),
-                                         arrow = arrow(length = unit(0.25, "cm")), colour = "purple",linetype = "dashed")}+
-        {if(input$vectors == "Yes") geom_text(data = vect.df[vect.df$Pval < 0.01,], aes(x = NMDS1, y = jitter(NMDS2, amount = 0.1), label = ClimVar))}+
-        theme(panel.background = element_rect(fill = "white", colour = "black"), panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-              axis.title = element_blank(),axis.text = element_blank(),axis.ticks = element_blank())
+    if(!is.null(input$BGC.choose)){
+      diagwl(walterPrep(), mlab="en", p3line=F, est=input$BGC.choose[1], per=2025)
     }
   })
-  
-  ##Download walter chart (choose pdf or png)
-  output$walterDown <- downloadHandler(
-    filename = function(){
-      paste("WalterFigure", input$wType, sep = ".")
-    },
-    content = function(file){
-      if(input$wType == "pdf"){
-        pdf(file)
-      }
-      if (input$wType == "png"){
-        png(file)
-      }
-        
-      diagwl(walterPrep(), mlab="en", p3line=F, est=input$walterBGC, per=input$walterPeriod)
-      dev.off()
-      }
-  )
-  
-  output$mdsDown <- downloadHandler(
-    filename = function(){
-      paste("nMDS_Function", input$mType, sep = ".")
-    },
-    content = function(file){
-      if(input$wType == "pdf"){
-        pdf(file)
-      }
-      if (input$wType == "png"){
-        png(file)
-      }
-      climOrd <- mdsPrep()
-      MDS <- metaMDS(climOrd[,annual], distance = "euclidian", k = 2, trymax = 2000)
-      plot(MDS, display = "sites")
-      ordihull(MDS, climOrd$Zone, label = T)
-      if (input$vectors == "Yes"){
-        vectors <- envfit(MDS, climOrd[,annual], permutations = 999)
-        plot(vectors, p.max = 0.01)
-      }
-      dev.off()
-    }
-  )
   
   ###Create html list to catch station plots
   output$stnPlots <- renderUI({
@@ -611,8 +569,8 @@ for (j in 1:50){
           }
           
         ggplot(dat, aes(x = Station, y = Mean, fill = Type)) +
-          geom_bar(position = position_dodge(), stat = "identity") +
-          scale_fill_manual(values = c("Model" = "purple","Station" = "darkgreen","Model61-90" = "red"))+
+          geom_bar(position = position_dodge(), stat = "identity", color = "black") +
+          scale_fill_manual(values = c("Model" = "black","Station" = "grey","Model61-90" = "white"))+
           theme_bw() + theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())+
           {if(length(dat$Station) > 12)theme(axis.text.x = element_text(angle = 90, hjust = 1))}+
           ggtitle(input$var.pick[my_j])
@@ -654,25 +612,11 @@ for (j in 1:50){
         return (x[1]-x[2])
       }
       temp <- dcast(stnBoth, St_ID + Name ~ variable, value.var = "value", fun.aggregate = diffFun)
-      if(length(input$var.pick) == 1){
-        cols <- "black"
-        dat <- temp[,3]
-        dat <- dat[!is.na(dat)]
-        plot(density(dat), main = "Density")
-      }else{
-        plot(0,0, xlim = c(max(-2, min(temp[,-(1:2)], na.rm = TRUE)), min(3,max(temp[,-(1:2)], na.rm = TRUE))), ylim = c(0,1.5))
-        cols <- rainbow(length(input$var.pick))
-        j <- 1
-        for(i in input$var.pick){
-          dat <- temp[,i]
-          dat <- dat[!is.na(dat)]
-          ##dat <- dat/sum(dat)
-          lines(density(dat), col = cols[j])
-          j <- j+1
-        }
-      }
-      
-      legend("topleft", legend = input$var.pick, fill = cols)
+      temp <- melt(temp, id.vars = c("St_ID","Name"))
+      ggplot(temp)+
+        stat_density(aes(x = value, y = ..scaled.., fill = variable), alpha = 0.25)+
+        ##xlim(c(-1.5,1.5))+
+        labs(x = "Difference", y = "Density")
     }
     
   })
@@ -738,36 +682,76 @@ output$selectStn <- renderUI({
               multiple = TRUE, selected = NULL, options = list(`actions-box` = TRUE))
 })
 
-
-
-##animated PCA
-output$climPCA <- renderImage({
-  outfile <- tempfile(fileext='.gif')
-  
-  if(length(input$periodPCA) > 0 & length(input$zonePCA) > 0){
-  climOrd <- climSummary
-  climOrd <- rbind(climOrd, futureSummary[futureSummary$Scenario == "rcp85",-3])
-  climOrd$Zone <- gsub("[[:lower:]]", "", climOrd$BGC)
-  climOrd$Zone <- gsub("[[:digit:]]", "", climOrd$Zone)
-  climOrd$Zone <- gsub("[[:blank:]]", "", climOrd$Zone)
-  climOrd <- climOrd[,c(length(climOrd),1:(length(climOrd)-1))]
-  climOrd <- climOrd[climOrd$period %in% input$periodPCA & climOrd$Var == "mean",]
-  climOrd <- climOrd[climOrd$Zone %in% input$zonePCA,]
-  climOrd <- climOrd[,c("Zone","period",annual, seasonalShort)]
-  climPCA <- prcomp(climOrd[,-c(1:2)], scale. = TRUE)
-  dfPCA <- data.frame(climPCA$x, Zone = climOrd$Zone, Year = climOrd$period)
-  
-  p <- ggplot(dfPCA, aes(PC1,PC2, col = Zone, frame = Year))+
-    geom_point(size = 2)+
-    geom_convexhull(aes(colour = Zone), alpha = 0.3)+
-    coord_fixed()
-  
-  gganimate(p, "outfile.gif")
-  
-  list(src = "outfile.gif",
-       contentType = 'image/gif')
+stDiffDat <- reactive({
+  if(input$diffType == "Mean"){
+    temp <- stnMeanDiff[,c("BGC","Longitude","Latitude","Elevation","Name",input$stnDiffVar)]
+  }else{
+    temp <- stnModDiff[,c("St_ID","Longitude","Latitude","Elevation","Name",input$stnDiffVar)]
   }
-  })
+  colnames(temp)[6] <- "Var"
+  temp <- temp[!is.na(temp$Var),]
+  temp <- temp[order(abs(temp$Var), decreasing = TRUE),]
+  temp$Order <- seq_along(temp$Var)
+  temp <- temp[temp$Order < input$diffAmountMap,]
+  return(temp)
+})
+
+output$stnDiffMap <- renderLeaflet({
+  dat <- stDiffDat()
+  if(input$diffType == "Mean"){
+    leaflet() %>%
+      addProviderTiles("CartoDB.Positron") %>%
+      addProviderTiles("Esri.WorldImagery", group = "Satellite") %>%
+      addLayersControl(baseGroups = c("Default", "Satellite"), options = layersControlOptions(collapsed = FALSE)) %>%
+      addAwesomeMarkers(data = dat, ~Longitude, ~Latitude, ~BGC, icon = icons,
+                          popup = paste0("<b>", dat$Name, "</b>", "<br>",
+                                         "BGC: ", dat$BGC, "<br>",
+                                         "Difference: ", dat$Var, "<br>",
+                                         "Order #: ", dat$Order, "<br>",
+                                         "Elevation: ", dat$Elevation, "m", "<br>"))
+  }else{
+    leaflet() %>%
+      addProviderTiles("CartoDB.Positron") %>%
+      addProviderTiles("Esri.WorldImagery", group = "Satellite") %>%
+      addLayersControl(baseGroups = c("Default", "Satellite"), options = layersControlOptions(collapsed = FALSE)) %>%
+      addAwesomeMarkers(data = dat, ~Longitude, ~Latitude, ~St_ID, icon = icons,
+                        popup = paste0("<b>", dat$Name, "</b>", "<br>",
+                                       "Difference: ", dat$Var, "<br>",
+                                       "Order #: ", dat$Order, "<br>",
+                                       "Elevation: ", dat$Elevation, "m", "<br>"))
+  }
+})
+
+output$climMap <- renderPlot({
+  dat <- mapData[,c("Longitude", "Latitude", "GCM", "Scenario", "Future", input$mapVar)]
+  colnames(dat)[6] <- "Var"
+  dat <- dat[dat[,6] > -2000,]
+  dat <- dat[(dat$GCM %in% c(input$mapMod,"Current")) & (dat$Scenario %in% c(input$mapScn,"")),]
+  dat <- unique(dat)
+  ##browser()
+  dat <- dcast(dat, Longitude + Latitude ~ Future, value.var = "Var")
+  dat <- st_as_sf(dat, coords = c("Longitude","Latitude"), crs = 4326, agr = "constant")
+  CRS.albers <- CRS ("+proj=aea +lat_1=50 +lat_2=58.5 +lat_0=45 +lon_0=-126 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs")
+  dat <- st_transform(dat, crs = CRS.albers)
+  plot(dat, pch = 16, cex = 0.3, key.pos = 1)
+})
+
+output$climDiff <- renderPlot({
+  dat <- mapData[,c("Longitude", "Latitude", "GCM", "Scenario", "Future", input$mapVar)]
+  colnames(dat)[6] <- "Var"
+  dat <- dat[dat[,6] > -2000,]
+  dat <- dat[dat$GCM %in% c(input$mapMod, "Current") & (dat$Scenario %in% c(input$mapScn,"")) & dat$Future %in% c(2010,input$futForDiff),]
+  dat <- unique(dat)
+  dat <- dcast(dat, Longitude + Latitude ~ Future, value.var = "Var")
+  colnames(dat)[3:4] <- c("Current","Future")
+  dat$Diff <- dat$Future - dat$Current
+  dat <- dat[,c("Longitude","Latitude","Diff")]
+  dat <- st_as_sf(dat, coords = c("Longitude","Latitude"), crs = 4326, agr = "constant")
+  CRS.albers <- CRS ("+proj=aea +lat_1=50 +lat_2=58.5 +lat_0=45 +lon_0=-126 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs")
+  dat <- st_transform(dat, crs = CRS.albers)
+  plot(dat, pch = 16, cex = 0.3, key.pos = 1)
+})
+
 
 }
 
