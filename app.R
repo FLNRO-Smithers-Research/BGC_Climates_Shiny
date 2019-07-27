@@ -17,6 +17,7 @@ require(sp)
 require(shinyBS)
 require(shinyjs)
 require(scales)
+require(foreach)
 
 ###Read in climate summary data
 climSummary <- fread("ClimateSummaryCurrent_v11_5.6.csv", data.table = F)
@@ -102,7 +103,9 @@ radioTooltip <- function(id, choice, title, placement = "bottom", trigger = "hov
   htmltools::attachDependencies(bsTag, shinyBS:::shinyBSDep)
 }
 
-icons <- awesomeIcons(icon = "circle",  markerColor = "blue", iconColor = "#ffffff", library = "fa")
+mapCol <- colorFactor(rainbow(length(stn.var)), domain = stn.var)
+
+icons <- awesomeIcons(icon = "circle",  markerColor = "blue", iconColor = ~mapCol(Var), library = "fa")
 
 ####USER INTERFACE########################
 ui <- navbarPage(title = "BC Climate Summaries", theme = "css/bcgov.css",
@@ -261,18 +264,8 @@ ui <- navbarPage(title = "BC Climate Summaries", theme = "css/bcgov.css",
                       titlePanel("Map of divergent stations"),
                       h4("Choose whether to investigate divergence by station/model or by station/mean for BGC, then
                          select variable of interest, and number of most divergent stations to display."),
-                      pickerInput("diffType",
-                                  "Select comparison type",
-                                  choices = c("Mean","Model"),
-                                  selected = "Model",
-                                  multiple = FALSE),
-                      pickerInput("stnDiffVar",
-                                  "Select Variable to Investigate",
-                                  choices = stnDiff.var,
-                                  selected = "MAT",
-                                  multiple = FALSE),
-                      numericInput("diffAmountMap","Select number of most divergent stations to display",
-                                   value = 5, max = 50, min = 0)
+                      awesomeRadio("mapType","Compare stations to individual locations or BGC mean", choices = c("Individual","Mean"),
+                                   selected = "Individual")
                       )
              ),
              fluidRow(
@@ -682,44 +675,59 @@ output$selectStn <- renderUI({
               multiple = TRUE, selected = NULL, options = list(`actions-box` = TRUE))
 })
 
-stDiffDat <- reactive({
-  if(input$diffType == "Mean"){
-    temp <- stnMeanDiff[,c("BGC","Longitude","Latitude","Elevation","Name",input$stnDiffVar)]
-  }else{
-    temp <- stnModDiff[,c("St_ID","Longitude","Latitude","Elevation","Name",input$stnDiffVar)]
-  }
-  colnames(temp)[6] <- "Var"
-  temp <- temp[!is.na(temp$Var),]
-  temp <- temp[order(abs(temp$Var), decreasing = TRUE),]
-  temp$Order <- seq_along(temp$Var)
-  temp <- temp[temp$Order < input$diffAmountMap,]
-  return(temp)
+stPrep2 <- reactive({
+  if(length(input$var.pick) > 0){
+    foreach(currVar = input$var.pick, .combine = rbind) %do% {
+      stationSub <- stationDat[stationDat$STATION %in% input$stn.pick, c("STATION","Latitude","Longitude","BGC", currVar)]
+      colnames(stationSub)[c(1,5)] <- c("Station","Mean")
+      stationSub$Type <- "Station"
+      stNames <- stationDat[,c("STATION","Name")]
+      if(input$mapType == "Mean"){
+        modelSub <- climSummary[climSummary$BGC %in% input$StnBGC.pick & climSummary$period == "1961 - 1990" & 
+                                  climSummary$Var == "mean", c("BGC", currVar)]
+        colnames(modelSub)[2] <- "BGCMean"
+        dat2 <- merge(stationSub, modelSub, by = "BGC", all.x = T)
+        dat2$Diff <- dat2$BGCMean - dat2$Mean
+      }else{
+        modelSub <- modelDat[modelDat$STATION %in% input$stn.pick,c("STATION","Latitude","Longitude","BGC", currVar)]
+        colnames(modelSub)[c(1,5)] <- c("Station","Mean")
+        modelSub$Type <- "Model"
+        dat <- rbind(modelSub,stationSub)
+        dat <- dat[order(dat$Station),]
+        dat <- merge(dat,stNames, by.x = "Station", by.y = "STATION", all.x = TRUE)
+        dat$Type <- as.factor(dat$Type)
+        dat2 <- dcast(dat, Station + Latitude + Longitude + BGC + Name ~ Type, value.var = "Mean", fun.aggregate = mean) ## shouldn't actually need to aggregate
+        colnames(dat2)[1] <- "ID"
+        dat2$Diff <- apply(dat2[,c("Model","Station")],1,FUN = function(x){((max(x)-min(x))/max(x))*100})
+      }
+      dat2$Diff[is.na(dat2$Diff)] <- 999
+      dat2 <- dat2[dat2$Diff > input$maxDiff,]
+      dat2 <- unique(dat2)
+      dat2$Var = currVar
+      dat2
+    }
+    
+  }else{NULL}
+  
 })
 
 output$stnDiffMap <- renderLeaflet({
-  dat <- stDiffDat()
-  if(input$diffType == "Mean"){
+  dat <- stPrep2()
+  dat <- dat[dat$Diff != 999,]
+  dat$Var <- as.factor(dat$Var)
+  ##browser()
+  if(!is.null(dat)){
     leaflet() %>%
       addProviderTiles("CartoDB.Positron") %>%
       addProviderTiles("Esri.WorldImagery", group = "Satellite") %>%
       addLayersControl(baseGroups = c("Default", "Satellite"), options = layersControlOptions(collapsed = FALSE)) %>%
-      addAwesomeMarkers(data = dat, ~Longitude, ~Latitude, ~BGC, icon = icons,
-                          popup = paste0("<b>", dat$Name, "</b>", "<br>",
-                                         "BGC: ", dat$BGC, "<br>",
-                                         "Difference: ", dat$Var, "<br>",
-                                         "Order #: ", dat$Order, "<br>",
-                                         "Elevation: ", dat$Elevation, "m", "<br>"))
-  }else{
-    leaflet() %>%
-      addProviderTiles("CartoDB.Positron") %>%
-      addProviderTiles("Esri.WorldImagery", group = "Satellite") %>%
-      addLayersControl(baseGroups = c("Default", "Satellite"), options = layersControlOptions(collapsed = FALSE)) %>%
-      addAwesomeMarkers(data = dat, ~Longitude, ~Latitude, ~St_ID, icon = icons,
+      addAwesomeMarkers(data = dat, ~Longitude, ~Latitude, icon = icons,
                         popup = paste0("<b>", dat$Name, "</b>", "<br>",
-                                       "Difference: ", dat$Var, "<br>",
-                                       "Order #: ", dat$Order, "<br>",
-                                       "Elevation: ", dat$Elevation, "m", "<br>"))
+                                       "Variable: ", dat$Var, "<br>",
+                                       "BGC: ", dat$BGC, "<br>",
+                                       "Difference: ", dat$Diff, "<br>"))
   }
+  
 })
 
 output$climMap <- renderPlot({
