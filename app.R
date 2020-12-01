@@ -26,9 +26,8 @@ require(gridExtra)
 ###Read in climate summary data
 drv <- dbDriver("PostgreSQL")
 sapply(dbListConnections(drv), dbDisconnect)
-con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", 
-                 port = 5432, dbname = "bgc_climate_data")
-
+con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", port = 5432, dbname = "bgc_climate_data")
+#con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "FLNRServer", port = 5432, dbname = "bgc_climate_data")
 ##read in zone map
 # map <- st_read(dsn = "ZoneMap", layer = "bec11vsmall")
 # map <- st_transform(map,crs = "+proj=longlat +datum=WGS84")
@@ -110,8 +109,8 @@ mapCol <- colorFactor(rainbow(length(stn.var)), domain = stn.var)
 icons <- awesomeIcons(icon = "circle",  markerColor = "blue", iconColor = ~mapCol(Var), library = "fa")
 
 ####USER INTERFACE########################
-ui <- navbarPage(title = "BC Climate Summaries", theme = "css/bcgov.css",
-    tabPanel("BGC Climate Summaries", ####First tab: Summary
+ui <- navbarPage(title = "Biogeoclimatic Climate Summaries", theme = "css/bcgov.css",
+    tabPanel("Select Graphical BGC Comparisons", ####First tab: Summary
             useShinyjs(),
             shinyjs::hidden(
               div(id = "main",
@@ -119,25 +118,27 @@ ui <- navbarPage(title = "BC Climate Summaries", theme = "css/bcgov.css",
                     column(2,
                            titlePanel("Select Input"), 
                            awesomeRadio("includeWNA",
-                                        "Inlcude WNA data/units?",
-                                        choices = c("Yes","No"),
+                                        "Include WNA units?",
+                                        choices = c("No", "Yes"),
                                         selected = "No",
-                                        inline = F),
-                           htmlOutput("zoneSelect"),
+                                        inline = TRUE),
+                          
                            awesomeRadio("byZone",
-                                        "Summarise by:",
+                                        "Summarize by:",
                                         choices = c("Zone","Subzone/variant"),
-                                        selected = "Zone",
-                                        inline = FALSE),
+                                        selected = "Subzone/variant",
+                                        inline = TRUE),
+                            htmlOutput("zoneSelect"),
                            htmlOutput("szSelect"),
                            htmlOutput("periodSelect"), ###Select periods (changes based on user input)
-                           dropdown( ###Select variables
+
+                             dropdown( ###Select variables
                              pickerInput("annual",
                                          "Select Annual Variables:",
                                          choices = annual,
                                          inline = FALSE,
                                          multiple = TRUE,
-                                         selected = c("map","mat"), options = list(`actions-box` = TRUE)),
+                                         selected = c("mat", "msp"), options = list(`actions-box` = TRUE)),
                              pickerInput("seasonal",
                                          "Select Seasonal Variables:",
                                          choices = seasonal,
@@ -157,27 +158,27 @@ ui <- navbarPage(title = "BC Climate Summaries", theme = "css/bcgov.css",
                                         "Select Error Type:",
                                         choices = c("std.dev.Geo","std.dev.Ann"),
                                         selected = "std.dev.Geo",
-                                        inline = FALSE),
+                                        inline = TRUE),
                            awesomeRadio("ModSet",
                                         "Select GCM Set",
-                                        choices = c("Full","Reduced"),
+                                        choices = c("Reduced", "Full"),
                                         selected = "Reduced",
-                                        inline = F),
+                                        inline = TRUE),
                            awesomeRadio("Scenario",
                                         "Select Future Scenario",
                                         choices = futScn,
-                                        selected = "rcp85",
-                                        inline = FALSE),
+                                        selected = "rcp45",
+                                        inline = TRUE),
                            awesomeRadio("futError",
                                         "Select Future Error Type",
-                                        choices = c("SD.Mod","SD.Geo"),
-                                        selected = "SD.Mod",
-                                        inline = FALSE),
+                                        choices = c("SD.Geo","SD.Mod"),
+                                        selected = "SD.Geo",
+                                        inline = TRUE),
                            awesomeRadio("grType",
                                         "Choose Graph Type",
                                         choices = c("Bar","Boxplot","Line"),
                                         selected = "Bar",
-                                        inline = FALSE)
+                                        inline = TRUE)
                     ),
                     radioTooltip(id = "Error", choice = "std.dev.Geo", title = "Geographical standard deviation (current)", placement = "right", trigger = "hover"),
                     radioTooltip(id = "Error", choice = "std.dev.Ann", title = "Standard Deviation over time period (current)", placement = "right", trigger = "hover"),
@@ -197,49 +198,55 @@ ui <- navbarPage(title = "BC Climate Summaries", theme = "css/bcgov.css",
             ),
             div(
               id = "start",
-              h1("Welcome to the BC Climate Summary webtool!"),
-              p("The purpose of this tool is to make climate and climate change information easily accessible. The first tab provides an interface
-          to download and summarise climate data from Tongli Wang's Climate BC; data is summarised by Biogeoclimatic unit and time period (inlcuding 
-          modelled future periods). Select one or more time periods, BGCs, and climate variables to show the data. You can then download the data and view some 
-          summary graphs."),
-              p("The second tab allows for viewing of climate BC projections on a map: select a model, future climate scenario, and climate variable, and 
-          it will display time series and difference maps of the provincial data."),
-              p("The third tab contains tools for investigating climate station data and comparing to modelled data; either select stations within a BGC to compare station
+              h3("Welcome to the Biogeoclimatic Climate Summary Webtool"),
+              p("The purpose of this tool is to provide access to summarized climate data for Biogeoclimatic units and allow comparisons of climte between BGCs and between different time periods"), 
+
+              p("Choose from the Tabs in the banner above to access different data summaries/comparisons."), 
+              br(),
+              
+              p("The BGC Climate Summaries tab provides an interface to view graphical comparisons of selected climate variables from ClimateBC data;"),actionButton("startBut", "Let's Get Started!"),
+              
+              p("The Summary Data tab provides a tabular view of comparisons made in the first tab and allows summary data to be downloaded."), 
+
+              p("The Two Variable Summary tab graphically compares selected BGC units along two selected climate variables"),
+              
+              p("The Station Data tab contains tools for comparing PRISM climate station data to modelled climate surface data by BGC; either select stations within a BGC to compare station
           data to climate BC data for that location, or view the location of stations on a map with a large difference from the model."),
-              br(),
-              actionButton("startBut", "Let's Get Started!"),
-              br(),
+            
               p("Please note that this tool is still being developed and will likely change frequently. While this information is accurate to the best
           of our knowledge, it has not been officially approved by the BC Government."),
-              p("Site author: Kiri Daust - please send bug reports or suggestions to kiri.daust@gov.bc.ca")
+              br(), 
+              p("Site Development: Kiri Daust - please send bug reports or suggestions to kiri.daust@gov.bc.ca"),
+              p("Content author: William MacKenzie - please send suggestions to will.mackenzie@gov.bc.ca")
             )
             
             
           )
             ,
-    tabPanel("Summary Data",
-             titlePanel("Data for Summary Figures"),
-             h4("Based on selections made in first tab"),
-             titlePanel("Data"), 
+    tabPanel("Download Table Summary Data",
+             titlePanel("Tabled Data from Select Tab"),
+             h4("Based on BGC and variable selections made in first tab"),
+            
              pickerInput("dataForm",
                          "Choose Data Format",
                          choices = c("BGCs as Columns","Timeperiods as Columns"),
                          selected = "BGCs as Columns",
                          multiple = FALSE),
-             tableOutput("table"), 
              downloadButton('downloadTable', 'Download'),
              br(),
+                          tableOutput("table"), 
+
              h4("Walter plot of BGC"),
              plotOutput("walterPlot")),
     
-    tabPanel("Two Variable Summary",
+    tabPanel("Two Variable Graphic Comparison",
              h4("Initial input based on BGC Summary choices"),
              column(3,
                     awesomeRadio("includeWNAV2",
-                                 "Inlcude WNA data/units?",
+                                 "Include WNA units?",
                                  choices = c("Yes","No"),
                                  selected = "No",
-                                 inline = F),
+                                 inline = TRUE),
                     h2("Select Zone: "),
                     htmlOutput("zoneSelectV2"),
                     htmlOutput("szSelectV2"),
@@ -267,7 +274,7 @@ ui <- navbarPage(title = "BC Climate Summaries", theme = "css/bcgov.css",
                     h4("Filled dots represent mean of each zone"),
                     plotOutput("twovar"))),
     ###Tab 4: Station data
-    tabPanel("StationData",
+    tabPanel("Climate Station Data",
              fluidRow(
                column(7,
                       titlePanel("Station and climateBC comparison"),
@@ -432,7 +439,7 @@ server <- function(input, output) {
                     label = "Sequential Normal Periods",
                     choices = period.ts,
                     multiple = TRUE,
-                    selected = c('1961 - 1990', '1991 - 2019'), options = list(`actions-box` = TRUE)),
+                    selected = c('1961 - 1990', '1991 - 2019', '2055'), options = list(`actions-box` = TRUE)),
         pickerInput("periodOther",
                     label = "Other Normal Periods",
                     choices = period.other,
@@ -449,7 +456,7 @@ server <- function(input, output) {
     pickerInput(inputId = "BGCZone.choose",###Select BGCs
                 label = "Select Zones for Summary",
                 choices = tempChoose, 
-                selected = "CWH", multiple = TRUE)
+                selected = "IDF", multiple = TRUE)
   })
   
   ##UI for selecting subzones
@@ -463,11 +470,11 @@ server <- function(input, output) {
                   label = "Select Subzones",
                   choices = szChoose,
                   multiple = TRUE,
-                  selected = szChoose[1], options = list(`actions-box` = TRUE))
+                  selected = c('IDFdk3', 'IDFxh2'), options = list(`actions-box` = TRUE))
     }
   })
   
-#############Climate BC Summaries#################### 
+#############Table Summaries and Data Download#################### 
   getData <- function(){
     selectVars <- c(input$annual, input$seasonal, input$monthly)
     selectPer <- c(input$periodTS, input$periodOther)
