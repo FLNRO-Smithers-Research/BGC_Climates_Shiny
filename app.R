@@ -26,8 +26,8 @@ require(gridExtra)
 ###Read in climate summary data
 drv <- dbDriver("PostgreSQL")
 sapply(dbListConnections(drv), dbDisconnect)
-con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", port = 5432, dbname = "bgc_climate_data")
-#con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "FLNRServer", port = 5432, dbname = "bgc_climate_data")
+#con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", port = 5432, dbname = "bgc_climate_data")
+con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "FLNRServer", port = 5432, dbname = "bgc_climate_data")
 ##read in zone map
 # map <- st_read(dsn = "ZoneMap", layer = "bec11vsmall")
 # map <- st_transform(map,crs = "+proj=longlat +datum=WGS84")
@@ -110,7 +110,7 @@ icons <- awesomeIcons(icon = "circle",  markerColor = "blue", iconColor = ~mapCo
 
 ####USER INTERFACE########################
 ui <- navbarPage(title = "Biogeoclimatic Climate Summaries", theme = "css/bcgov.css",
-    tabPanel("Select Graphical BGC Comparisons", ####First tab: Summary
+    tabPanel("Select BGCs and Variables", ####First tab: Summary
             useShinyjs(),
             shinyjs::hidden(
               div(id = "main",
@@ -198,34 +198,40 @@ ui <- navbarPage(title = "Biogeoclimatic Climate Summaries", theme = "css/bcgov.
             ),
             div(
               id = "start",
-              h3("Welcome to the Biogeoclimatic Climate Summary Webtool"),
-              p("The purpose of this tool is to provide access to summarized climate data for Biogeoclimatic units and allow comparisons of climte between BGCs and between different time periods"), 
-
-              p("Choose from the Tabs in the banner above to access different data summaries/comparisons."), 
+              h3("Welcome to the Climate Attributes of Biogeoclimatic Units Webtool"),
+              p("The primary purpose of this tool is to provide access to summarized climate data for Biogeoclimatic units and allow climatic comparisons between BGCs and different time periods"), 
+              tags$b("Click here to select BGCs, Climate Variables, and TimePeriod."),
+              actionButton("startBut", "Let's Get Started!"),
               br(),
+              ("Goto the"), tags$b("View/Download Summary Tables"), ("tab to view and downloaded data in table form."),
               
-              p("The BGC Climate Summaries tab provides an interface to view graphical comparisons of selected climate variables from ClimateBC data;"),actionButton("startBut", "Let's Get Started!"),
+              h4("Other Data Summaries"),
+              ("The"), tags$b("Two Variable Graphic Comparison"),  ("tab shows selected BGC units position on two selected climate variables"),
+              br(),
+              ("The"), tags$b ("Climate Station Data"), ("tab contains tools for comparing PRISM climate station data to modelled climate surface data by BGC"),
               
-              p("The Summary Data tab provides a tabular view of comparisons made in the first tab and allows summary data to be downloaded."), 
+            tags$hr(),
+              
+              p("This tool is still being developed and will likely change periodically in format and content. 
+                Data sets will be periodically updated to reflect new Biogeoclimatic mapping or updates to the ClimateBC surface. 
+                While this information is accurate to the best
+          of our knowledge, it has not yet been officially reviewed."),
 
-              p("The Two Variable Summary tab graphically compares selected BGC units along two selected climate variables"),
-              
-              p("The Station Data tab contains tools for comparing PRISM climate station data to modelled climate surface data by BGC; either select stations within a BGC to compare station
-          data to climate BC data for that location, or view the location of stations on a map with a large difference from the model."),
-            
-              p("Please note that this tool is still being developed and will likely change frequently. While this information is accurate to the best
-          of our knowledge, it has not been officially approved by the BC Government."),
-              br(), 
-              p("Site Development: Kiri Daust - please send bug reports or suggestions to kiri.daust@gov.bc.ca"),
-              p("Content author: William MacKenzie - please send suggestions to will.mackenzie@gov.bc.ca")
+              p("Site Development: Kiri Daust - please send bug reports or formatting suggestions to kiri.daust@gov.bc.ca"),
+              p("Content author: William MacKenzie - inquiries about data or BEC contact will.mackenzie@gov.bc.ca"),
+              p("Citation: MacKenzie, W.H. and K. Daust. Climate Characteristics of Biogeoclimatic Units. ")
             )
             
             
           )
             ,
-    tabPanel("Download Table Summary Data",
-             titlePanel("Tabled Data from Select Tab"),
-             h4("Based on BGC and variable selections made in first tab"),
+    tabPanel("View/Download Summary Tables",
+             h3("Climate Data in Table Format"),
+             p("Table data reflects the BGC, Variable, and Time Period selections made in Select Comparisons Tab"),
+               
+             p(tags$b("BGCv12 is current mapping version")),
+             p(tags$b("ClimateBCv6.30 is the current climate surface data")),
+
             
              pickerInput("dataForm",
                          "Choose Data Format",
