@@ -26,8 +26,8 @@ require(gridExtra)
 ###Read in climate summary data
 drv <- dbDriver("PostgreSQL")
 sapply(dbListConnections(drv), dbDisconnect)
-#con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", port = 5432, dbname = "bgc_climate_data")
-con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "FLNRServer", port = 5432, dbname = "bgc_climate_data")
+con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", port = 5432, dbname = "bgc_climate_data")
+#con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "FLNRServer", port = 5432, dbname = "bgc_climate_data")
 ##read in zone map
 # map <- st_read(dsn = "ZoneMap", layer = "bec11vsmall")
 # map <- st_transform(map,crs = "+proj=longlat +datum=WGS84")
@@ -191,6 +191,7 @@ ui <- navbarPage(title = "Biogeoclimatic Climate Summaries", theme = "css/bcgov.
                     column(10,
                            titlePanel("Summary Figures"),
                            h4("ClimateBC Summary by BGC"),
+                           downloadButton("downloadSumPlots",label = "Download Plots"),
                            plotOutput("sumPlots")
                   )
                 )
@@ -278,6 +279,7 @@ ui <- navbarPage(title = "Biogeoclimatic Climate Summaries", theme = "css/bcgov.
              column(9,
                     h2("Two-Variable Plot"),
                     h4("Filled dots represent mean of each zone"),
+                    downloadButton("download2Var", label = "Download Plot"),
                     plotOutput("twovar"))),
     ###Tab 4: Station data
     tabPanel("Climate Station Data",
@@ -408,13 +410,12 @@ server <- function(input, output) {
     dat
   })
   
-  output$twovar <- renderPlot({
+  createTwoVar <- reactive({
     if(!is.null(input$sz.chooseV2)){
       dat <- as.data.table(getCompDat())
       dat[,Zone := gsub("[[:lower:]]|[[:digit:]]","",bgc)]
       dat[,Zone := as.factor(gsub("_.*","",Zone))]
       tZone <- dat[,lapply(.SD,mean),by = .(Zone), .SDcols = -c("bgc","period","var")]
-      ##browser()
       
       if(input$compNormPer == "1961 - 1990"){
         ggplot(dat, aes(x = get(input$xvar), y = get(input$yvar))) +
@@ -435,8 +436,18 @@ server <- function(input, output) {
       }
       
     }
-    
+  })
+  
+  output$twovar <- renderPlot({
+    print(createTwoVar())
   }, height = 600)
+  
+  output$download2Var <- downloadHandler(
+    filename = function(){paste0("TwoVar_",input$yvar,"-",input$xvar,"_",input$compNormPer,".png")},
+    content = function(file){
+      ggsave(file,plot = createTwoVar(), device = "png", width = 7, height = 7, units = "in")
+    }
+  )
   
   ###Create UI for selecting climate summary and periods
   output$periodSelect <- renderUI({
@@ -516,7 +527,7 @@ server <- function(input, output) {
       climSubset <- dbGetQuery(con, q1)
       futureSub <- dbGetQuery(con, q2)
       ##browser()
-      climSubset <- rbind(climSubset, futureSub)
+      climSubset <- as.data.table(rbind(climSubset, futureSub))
     }
     return(climSubset)
   }
@@ -527,12 +538,12 @@ server <- function(input, output) {
     selectPer <- c(input$periodTS, input$periodOther)
     if(length(selectPer) > 0 & length(selectVars) > 0){
       climSubset <- getData()
-      molten <- melt(climSubset)
+      #browser()
+      molten <- melt(climSubset,id.vars = c("bgc","period","var"))
       reShape <- dcast(molten, period+var+variable~bgc)
-      reShape <- reShape[order(reShape$variable),]
-      reShape <- reShape[,c(1,3,2,4:length(reShape))]
-      colnames(reShape)[1:3] <- c("TimePeriod","ClimateVar","Statistic")
-      reShape <- as.data.frame(reShape)
+      setorder(reShape,variable)
+      setnames(reShape, old = c("period","var","variable"), new = c("TimePeriod","Statistic","ClimateVar"))
+      setcolorder(reShape,c(c(1,3,2,4:length(reShape))))
       return(reShape)
     }
   })
@@ -543,17 +554,17 @@ server <- function(input, output) {
     selectPer <- c(input$periodTS, input$periodOther)
     if(length(selectPer) > 0 & length(selectVars) > 0){
       climSubset <- getData()
-      molten <- melt(climSubset)
+      molten <- melt(climSubset, id.vars = c("bgc","period","var"))
       if(input$dataForm == "BGCs as Columns"){
         reShape <- dcast(molten, period+var+variable~bgc)
-        reShape <- reShape[order(reShape$variable),]
-        reShape <- reShape[,c(1,3,2,4:length(reShape))]
-        colnames(reShape)[1:3] <- c("TimePeriod","ClimateVar","Statistic")
+        setorder(reShape,variable)
+        setnames(reShape, old = c("period","var","variable"), new = c("TimePeriod","Statistic","ClimateVar"))
+        setcolorder(reShape,c(c(1,3,2,4:length(reShape))))
       }else{
         reShape <- dcast(molten, bgc+var+variable~period)
-        reShape <- reShape[order(reShape$variable),]
+        setorder(reShape,variable)
+        setnames(reShape, old = c("period","var","variable"), new = c("TimePeriod","Statistic","ClimateVar"))
         reShape <- reShape[,c(1,3,2,4:length(reShape))]
-        colnames(reShape)[1:3] <- c("BGC","ClimateVar","Statistic")
       }
       
       reShape <- as.data.frame(reShape)
@@ -569,6 +580,7 @@ server <- function(input, output) {
     }
   )
   
+  ###create main summary plots
   summaryPlots <- reactive({
     plots <- list()
     selectVars <- c(input$annual, input$seasonal, input$monthly)
@@ -579,19 +591,16 @@ server <- function(input, output) {
       if (length(selectVars) > 0 & length(selectPer) > 0){
         data <- createTable()
         if(input$grType == "Bar" | input$grType == "Line"){
-          graph <- data[data$ClimateVar == selectVars[i] & 
-                          (data$Statistic == "mean" | data$Statistic == input$Error | data$Statistic == input$futError),]
-          graph$Statistic <- ifelse(graph$Statistic != "mean", "StDev", "mean")
-          graph <- graph[,-2]
-          graph <- as.data.frame(graph)
-          graph <- melt(graph)
+          graph <- data[ClimateVar == selectVars[i] & 
+                          (Statistic == "mean" | Statistic == input$Error | Statistic == input$futError),]
+          graph[,Statistic := fifelse(Statistic != "mean", "StDev", "mean")]
+          graph[,ClimateVar := NULL]
+          graph <- melt(graph,id.vars = c("TimePeriod","Statistic"))
           graph <- dcast(graph, variable+TimePeriod~Statistic)
-          graph <- as.data.frame(graph)
-          
-          colnames(graph) <- c("BGC","Period","Mean","Error")
-          graph <- graph[order(graph$Period),]
+          setnames(graph,old = c("variable","TimePeriod","StDev","mean"), new = c("BGC","Period","Error","Mean"))
+          setorder(graph,Period)
           if(input$grType == "Bar"){
-            graph$Period <- as.factor(graph$Period)
+            graph[,Period := as.factor(Period)]
             plots[[i]] <- ggplot(graph, aes(x = BGC, y = Mean, fill = Period)) +
               geom_bar(position = position_dodge(), stat = "identity") +
               geom_errorbar(aes(ymin = Mean - Error, ymax = Mean + Error), width = 0.2, 
@@ -608,19 +617,16 @@ server <- function(input, output) {
               ggtitle(selectVars[i]) + labs(x = "First Year of Normal Period", y = "")
           }
         }else{
-          graph <- data[data$ClimateVar == selectVars[i] & data$Statistic %in% c("mean","max","min","10%","90%",input$Error,input$futError),]
-          graph$Statistic <- ifelse(graph$Statistic %in% c(input$Error, input$futError), "StDev", graph$Statistic)
-          graph <- graph[,-2]
-          graph <- as.data.frame(graph)
-          graph <- melt(graph)
+          graph <- data[ClimateVar == selectVars[i] & Statistic %in% c("mean","max","min","10%","90%",input$Error,input$futError),]
+          graph[,Statistic := fifelse(Statistic %chin% c(input$Error, input$futError), "StDev", Statistic)]
+          graph[,ClimateVar := NULL]
+          graph <- melt(graph, id.vars = c("TimePeriod","Statistic"))
           graph <- dcast(graph, variable+TimePeriod~Statistic)
-          graph <- as.data.frame(graph)
-          colnames(graph)[1:2] <- c("BGC","Period")
-          graph <- graph[order(graph$Period),]
+          setnames(graph, old = c("variable","TimePeriod"), new = c("BGC","Period"))
+          setorder(graph, Period)
           
-          graph$Period <- as.character(graph$Period)
-          graph$Period <- as.numeric(substring(graph$Period, first = 1, last = 4))
-          graph$BGC <- as.factor(graph$BGC)
+          graph[,Period := as.numeric(substring(as.character(Period), first = 1, last = 4))]
+          graph[,BGC := as.factor(BGC)]
           plots[[i]] <- ggplot(graph, aes(x = Period, lower = `10%`, upper = `90%`, middle = mean, 
                             ymin = min, ymax = max,group = 1:(length(selectPer)*length(unique(graph$BGC))), color = BGC))+
             geom_boxplot(stat = "identity", position = "dodge")+
@@ -649,6 +655,24 @@ server <- function(input, output) {
     }, height = pHeight())
   })
   
+  ##download summary plots
+  output$downloadSumPlots <- downloadHandler(
+    filename = function(){
+      if(input$includeWNA == "Yes"){
+        "WNA_ClimateSummaryPlots.png"
+      }else{
+        "BC_ClimateSummaryPlots.png"
+      }
+    },
+    content = function(file){
+      ptlist <- summaryPlots()
+      to_delete <- !sapply(ptlist,is.null)
+      ptlist <- ptlist[to_delete] 
+      if (length(ptlist)==0) return(NULL)
+      plts <- arrangeGrob(grobs=ptlist,ncol=2)
+      ggsave(file,plot = plts,device = "png",units = "in", width = 12, height = pHeight()/64)
+    }
+  )
 
   ###prepare data for walter chart 
   walterPrep <- reactive({
@@ -756,8 +780,6 @@ for (j in 1:50){
       })
     })
   }
-  
-  
   
   ###function to clean station data
   stnDat <- reactive({
@@ -920,67 +942,4 @@ for (j in 1:50){
 
 # Run the application 
 shinyApp(ui = ui, server = server)
-
-
-##not currently used
-###create station summary plots
-# output$stnSumPlots <- renderUI({
-#   stnSumVars <- input$var.pick
-#   stnSumPlots <- lapply(1:length(stnSumVars), function(k){
-#     plotname <- paste("StnSumPlot", k, sep= "")
-#     plotOutput(plotname, height = "400px", width = "100%")
-#   })
-#   do.call(tagList, stnSumPlots)
-# })
-# 
-# for (k in 1:50){
-#   local({
-#     my_k <- k
-#     plotname <- paste("StnSumPlot", my_k, sep= "")
-#     
-#     output[[plotname]] <- renderPlot({
-#       BGC.select <- c(input$StnBGC.summ)
-#       stationSub <- dbGetQuery(con, paste0("SELECT ",paste(c("bgc",input$var.pick[my_k]),collapse = ","),
-#                                            " FROM st_summary WHERE bgc IN ('",
-#                                            paste(BGC.select,collapse = "','"),"')"))
-#       if(length(BGC.select) > 0 & length(input$var.pick) > 0){
-#         colnames(stationSub) <- c("BGC","Value")
-#         stationSub$Type <- "Station"
-#         modelSub <- dbGetQuery(con, paste0("SELECT ",paste(c("bgc",input$var.pick[my_k]),collapse = ","),
-#                                            " FROM stpoints_mod81 WHERE bgc IN ('",
-#                                            paste(BGC.select,collapse = "','"),"')"))
-#         colnames(modelSub) <- c("BGC","Value")
-#         modelSub$Type <- "Model"
-#         
-#         dat <- rbind(modelSub,stationSub)
-#         dat <- dat[dat$Value > -998,]
-#         dat <- dat[order(dat$Type, dat$BGC),]
-#         dat$Mean <- ave(dat$Value, dat$BGC, dat$Type, FUN = mean)
-#         dat$SD <- ave(dat$Value, dat$BGC, dat$Type, FUN = sd)
-#         dat <- dat[,-c(2)]
-#         dat <- unique(dat)
-#         dat$Type <- as.factor(dat$Type)
-#         
-#         ggplot(dat, aes(x = BGC, y = Mean, fill = Type)) +
-#           geom_bar(position = position_dodge(), stat = "identity") +
-#           scale_fill_manual(values = c("Model" = "purple","Station" = "darkgreen"))+
-#           geom_errorbar(aes(ymin = Mean - SD, ymax = Mean + SD), width = 0.2, 
-#                         position = position_dodge(0.9))+ theme_bw()+
-#           theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())+
-#           ggtitle(input$var.pick[my_k])
-#       }
-#     })
-#   })
-# }
-
-# output$znMap <- renderLeaflet({
-#   leaflet(data = map) %>%
-#     addPolygons(label = ~ Zone,
-#                 layerId = map$Zone,
-#                 fillColor = topo.colors(16, alpha = NULL),
-#                 stroke = F,
-#                 highlightOptions = highlightOptions(color = "white",
-#                                                     weight = 2,
-#                                                     bringToFront = TRUE))
-# })
 
