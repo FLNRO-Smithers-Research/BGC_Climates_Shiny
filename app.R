@@ -26,8 +26,8 @@ require(gridExtra)
 ###Read in climate summary data
 drv <- dbDriver("PostgreSQL")
 sapply(dbListConnections(drv), dbDisconnect)
-con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", port = 5432, dbname = "bgc_climate_data")
-#con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "FLNRServer", port = 5432, dbname = "bgc_climate_data")
+con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", port = 5432, dbname = "bgc_climate_data") ## SERVER USE
+#con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "FLNRServer", port = 5432, dbname = "bgc_climate_data") ## LOCAL USE
 ##read in zone map
 # map <- st_read(dsn = "ZoneMap", layer = "bec11vsmall")
 # map <- st_transform(map,crs = "+proj=longlat +datum=WGS84")
@@ -219,8 +219,8 @@ ui <- navbarPage(title = "Biogeoclimatic Climate Summaries", theme = "css/bcgov.
           of our knowledge, it has not yet been officially reviewed."),
 
               p("Site Development: Kiri Daust - please send bug reports or formatting suggestions to kiri.daust@gov.bc.ca"),
-              p("Content author: William MacKenzie - inquiries about data or BEC contact will.mackenzie@gov.bc.ca"),
-              p("Citation: MacKenzie, W.H. and K. Daust. Climate Characteristics of Biogeoclimatic Units. ")
+              p("Content author: William H. MacKenzie - inquiries about data or BEC contact will.mackenzie@gov.bc.ca"),
+              p("Citation: MacKenzie, W.H. and K. Daust. Climatic Characteristics of Biogeoclimatic Units. ")
             )
             
             
@@ -247,7 +247,7 @@ ui <- navbarPage(title = "Biogeoclimatic Climate Summaries", theme = "css/bcgov.
              plotOutput("walterPlot")),
     
     tabPanel("Two Variable Graphic Comparison",
-             h4("Initial input based on BGC Summary choices"),
+             h5("Initial input based on BGC Summary choices"),
              column(3,
                     awesomeRadio("includeWNAV2",
                                  "Include WNA units?",
@@ -258,27 +258,27 @@ ui <- navbarPage(title = "Biogeoclimatic Climate Summaries", theme = "css/bcgov.
                     htmlOutput("zoneSelectV2"),
                     htmlOutput("szSelectV2"),
                     pickerInput("yvar",
-                                "Select Y Variable:",
+                                "Select Y-axis variable:",
                                 choices = c(annual, seasonal),
                                 inline = FALSE,
                                 multiple = FALSE,
                                 selected = "mat"),
                     pickerInput("xvar",
-                                "Select X Variable:",
+                                "Select X-axis variable:",
                                 choices = c(annual, seasonal),
                                 inline = FALSE,
                                 multiple = FALSE,
                                 selected = "map"),
                     pickerInput("compNormPer",
-                                "Select Time Period:",
+                                "Select Past or Future Time Period (compares to 1961-90) :",
                                 choices = period.ts,
                                 inline = FALSE,
                                 multiple = FALSE,
                                 selected = "1961 - 1990")
                     ),
              column(9,
-                    h2("Two-Variable Plot"),
-                    h4("Filled dots represent mean of each zone"),
+                    h3("Two-Variable Plot"),
+                    h5("Filled dots represent mean of selected subzone/variants"),
                     downloadButton("download2Var", label = "Download Plot"),
                     plotOutput("twovar"))),
     ###Tab 4: Station data
