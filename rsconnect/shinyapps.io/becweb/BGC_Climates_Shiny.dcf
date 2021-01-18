@@ -1,0 +1,13 @@
+name: BGC_Climates_Shiny
+title: BGC_Climates_Shiny
+username:
+account: becweb
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 471800
+bundleId: 4113647
+url: https://becweb.shinyapps.io/BGC_Climates_Shiny/
+when: 1611000171.86953
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: README.md|Prism Station Data/ppt_uscdn_8110.csv|Prism Station Data/StationClean.R|Prism Station Data/tn_uscdn_8110.csv|Prism Station Data/tx_uscdn_8110.csv|old|www
