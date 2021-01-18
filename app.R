@@ -26,8 +26,9 @@ require(gridExtra)
 ###Read in climate summary data
 drv <- dbDriver("PostgreSQL")
 sapply(dbListConnections(drv), dbDisconnect)
-con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", port = 5432, dbname = "bgc_climate_data") ## SERVER USE
-#con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "FLNRServer", port = 5432, dbname = "bgc_climate_data") ## LOCAL USE
+con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "smithersresearch.ca", port = 5432, dbname = "bgc_climate_data") ##  eXTERNAL USE
+#con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", port = 5432, dbname = "bgc_climate_data") ##  LOCAL USE
+#con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "FLNRServer", port = 5432, dbname = "bgc_climate_data") ## LOCAL MACHINE
 ##read in zone map
 # map <- st_read(dsn = "ZoneMap", layer = "bec11vsmall")
 # map <- st_transform(map,crs = "+proj=longlat +datum=WGS84")
