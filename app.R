@@ -201,27 +201,32 @@ ui <- navbarPage(title = "Biogeoclimatic Climate Summaries", theme = "css/bcgov.
             div(
               id = "start",
               h3("Welcome to the Climate Attributes of Biogeoclimatic Units Webtool"),
-              p("The primary purpose of this tool is to provide access to summarized climate data for Biogeoclimatic units and allow climatic comparisons between BGCs and different time periods"), 
-              tags$b("Click here to select BGCs, Climate Variables, and TimePeriod."),
-              actionButton("startBut", "Let's Get Started!"),
+              p("The primary purpose of this tool is to provide access to summarized climate data for Biogeoclimatic units and allow climatic comparisons between BGCs and different time periods"),
+              h4("Climate Summaries"),
+              p("1. User selects BGCs, Climate Variables, and TimePeriods of Interest."),
+              p("Graphical comparisons of selections can be viewed and downloaded"),
+              p(""),
+              actionButton("startBut", tags$b("Click here to create Climate Summaries")),
               br(),
-              ("Goto the"), tags$b("View/Download Summary Tables"), ("tab to view and downloaded data in table form."),
-              
+              p(""),
+              ("2. Data tables of the selected summary can then be downloaded from the "), tags$b("View/Download Summary Tables"), ("tab."),
+              p(""),
               h4("Other Data Summaries"),
               ("The"), tags$b("Two Variable Graphic Comparison"),  ("tab shows selected BGC units position on two selected climate variables"),
               br(),
+              p(""),
               ("The"), tags$b ("Climate Station Data"), ("tab contains tools for comparing PRISM climate station data to modelled climate surface data by BGC"),
               
             tags$hr(),
               
               p("This tool is still being developed and will likely change periodically in format and content. 
-                Data sets will be periodically updated to reflect new Biogeoclimatic mapping or updates to the ClimateBC surface. 
-                While this information is accurate to the best
-          of our knowledge, it has not yet been officially reviewed."),
-
+              Data sets will be periodically updated to reflect new Biogeoclimatic mapping or updates to the ClimateBC surface. 
+              While this information is accurate to the best of our knowledge, it has not yet been officially reviewed."),
+              p(tags$b("The current version is based on ClimateBC/NA v6.30 data and BECv11 mapping.")),
+            
               p("Site Development: Kiri Daust - please send bug reports or formatting suggestions to kiri.daust@gov.bc.ca"),
               p("Content author: William H. MacKenzie - inquiries about data or BEC contact will.mackenzie@gov.bc.ca"),
-              p("Citation: MacKenzie, W.H. and K. Daust. Climatic Characteristics of Biogeoclimatic Units. ")
+              p("Citation: MacKenzie, W.H., K. Daust, H. Griesbauer, & E. Matsuzaki. 2021. Climatic Characteristics of Biogeoclimatic Units. Shiny App https://becweb.shinyapps.io/BGC_Climates_Shiny/  ")
             )
             
             
