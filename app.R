@@ -3,17 +3,15 @@
 ###Kiri Daust, May 13 2020
 
 require(shiny)
-require(reshape2)
 require(shinyWidgets)
 require(ggplot2)
-require(vegan)
+#require(vegan)
 require(shinythemes)
-require(devtools)
+#require(devtools)
 require(leaflet)
 require(data.table)
 require(sf)
 require(climatol)
-require(sp)
 require(shinyBS)
 require(shinyjs)
 require(scales)
@@ -26,12 +24,8 @@ require(gridExtra)
 ###Read in climate summary data
 drv <- dbDriver("PostgreSQL")
 sapply(dbListConnections(drv), dbDisconnect)
-con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "smithersresearch.ca", port = 5432, dbname = "bgc_climate_data") ##  eXTERNAL USE
-#con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "localhost", port = 5432, dbname = "bgc_climate_data") ##  LOCAL USE
-#con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "FLNRServer", port = 5432, dbname = "bgc_climate_data") ## LOCAL MACHINE
-##read in zone map
-# map <- st_read(dsn = "ZoneMap", layer = "bec11vsmall")
-# map <- st_transform(map,crs = "+proj=longlat +datum=WGS84")
+con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "68.183.199.104", port = 5432, dbname = "bgc_climate_data") ##  eXTERNAL USE
+
 ####Set up choices
 BGC.choose <- dbGetQuery(con, "SELECT DISTINCT bgc from climsum_curr_v12 where bgc <> '' ORDER BY bgc")$bgc
 BGC.chooseBC <- dbGetQuery(con, "SELECT DISTINCT bgc from climsum_curr_v12 where location = 'BC' AND bgc <> '' ORDER BY bgc")$bgc
@@ -78,12 +72,13 @@ mapMod.choose <- dbGetQuery(con, "SELECT DISTINCT gcm FROM map_grid ORDER BY gcm
 mapFut.choose <- c(2025,2055,2085)
 mapScn.choose <- c("rcp45","rcp85")
 
-stn.list <- list()
-for(i in 1:length(stn.BGC)){
-  temp <- dbGetQuery(con, paste("SELECT station from st_summary where bgc = '",stn.BGC[i],"'",sep = ""))[,1]
-  name <- paste("stn.",stn.BGC[i],sep = "")
-  stn.list[[name]] <- temp
-}
+load("./inputs/StationList.Rdata")
+# stn.list <- list()
+# for(i in 1:length(stn.BGC)){
+#   temp <- dbGetQuery(con, paste("SELECT station from st_summary where bgc = '",stn.BGC[i],"'",sep = ""))[,1]
+#   name <- paste("stn.",stn.BGC[i],sep = "")
+#   stn.list[[name]] <- temp
+# }
 
 radioTooltip <- function(id, choice, title, placement = "bottom", trigger = "hover", options = NULL){##function from StackOverflow for tooltips
   
@@ -129,9 +124,27 @@ ui <- navbarPage(title = "Biogeoclimatic Climate Summaries", theme = "css/bcgov.
                                         choices = c("Zone","Subzone/variant"),
                                         selected = "Subzone/variant",
                                         inline = TRUE),
-                            htmlOutput("zoneSelect"),
-                           htmlOutput("szSelect"),
-                           htmlOutput("periodSelect"), ###Select periods (changes based on user input)
+                           pickerInput(inputId = "BGCZone.choose",###Select BGCs
+                                       label = "Select Zones for Summary",
+                                       choices = zone.chooseBC, 
+                                       selected = "IDF", multiple = TRUE),
+                           hidden(pickerInput("sz.choose",
+                                              label = "Select Subzones",
+                                              choices = "",
+                                              multiple = TRUE,
+                                              options = list(`actions-box` = TRUE))),
+                           dropdown(
+                             pickerInput("periodTS",
+                                         label = "Sequential Normal Periods",
+                                         choices = period.ts,
+                                         multiple = TRUE,
+                                         selected = c('1961 - 1990', '1991 - 2019', '2055'), options = list(`actions-box` = TRUE)),
+                             pickerInput("periodOther",
+                                         label = "Other Normal Periods",
+                                         choices = period.other,
+                                         multiple = TRUE,
+                                         selected = NULL, options = list(`actions-box` = TRUE)),
+                             circle = FALSE, label = "Period", status = "primary"), 
 
                              dropdown( ###Select variables
                              pickerInput("annual",
@@ -239,7 +252,6 @@ ui <- navbarPage(title = "Biogeoclimatic Climate Summaries", theme = "css/bcgov.
              p(tags$b("BGCv12 is current mapping version")),
              p(tags$b("ClimateBCv6.30 is the current climate surface data")),
 
-            
              pickerInput("dataForm",
                          "Choose Data Format",
                          choices = c("BGCs as Columns","Timeperiods as Columns"),
@@ -247,7 +259,7 @@ ui <- navbarPage(title = "Biogeoclimatic Climate Summaries", theme = "css/bcgov.
                          multiple = FALSE),
              downloadButton('downloadTable', 'Download'),
              br(),
-                          tableOutput("table"), 
+            tableOutput("table"), 
 
              h4("Walter plot of BGC"),
              plotOutput("walterPlot")),
@@ -261,8 +273,15 @@ ui <- navbarPage(title = "Biogeoclimatic Climate Summaries", theme = "css/bcgov.
                                  selected = "No",
                                  inline = TRUE),
                     h2("Select Zone: "),
-                    htmlOutput("zoneSelectV2"),
-                    htmlOutput("szSelectV2"),
+                    pickerInput(inputId = "BGCZone.chooseV2",###Select BGCs
+                                label = "Select Zones for Summary",
+                                choices = zone.chooseBC, 
+                                selected = "", multiple = TRUE),
+                    pickerInput("sz.chooseV2",
+                                label = "Select Subzones",
+                                choices = "",
+                                multiple = TRUE,
+                                options = list(`actions-box` = TRUE)),
                     pickerInput("yvar",
                                 "Select Y-axis variable:",
                                 choices = c(annual, seasonal),
@@ -329,623 +348,56 @@ ui <- navbarPage(title = "Biogeoclimatic Climate Summaries", theme = "css/bcgov.
                       plotOutput("diffDens")),
                column(5,
                       leafletOutput("stnDiffMap", height = "600px"))
-             )),
-    
-    tabPanel("Climate Maps",
-             titlePanel("BC Climate Variable Maps"),
-             h4("Select a GCM, scenario, future period, and climate variable to display a map 
-                representation."),
-             column(3,
-                    pickerInput("mapMod","Select GCM", choices = mapMod.choose, multiple = F),
-                    pickerInput("mapScn", "Select Future Climate Scenario", choices = mapScn.choose, multiple = F),
-                    pickerInput("mapVar", "Select Climate Variable", choices = mapVar.choose, multiple = F),
-                    br(),
-                    pickerInput("futForDiff","Select Future Period for Difference", choices = c(2025,2055,2085), multiple = F)),
-             column(9,
-                    h3("Time Series Maps"),
-                    plotOutput("climMap"),
-                    h3("Change Map"),
-                    plotOutput("climDiff")))
+             ))
 
 )
-             
-
 ####SERVER LOGIC#################
-server <- function(input, output) {
+server <- function(input, output, session) {
   ###########Setup######################
   observeEvent(input$startBut, {
     shinyjs::hide("start")
     shinyjs::show("main")
   })
   
-  ###Choose time period (calls above function)
-  timePer <- reactive({
-    period.choose <- as.character(unique(chooseData()$period))
-    return(period.choose)
-  })
-  
-  output$zoneSelectV2 <- renderUI({
-    tempChoose <- zone.chooseBC
-    if(input$includeWNAV2 == "Yes"){tempChoose <- zone.choose}
-    pickerInput(inputId = "BGCZone.chooseV2",###Select BGCs
-                label = "Select Zones for Summary",
-                choices = tempChoose, 
-                selected = input$BGCZone.choose, multiple = TRUE)
-  })
-  
-  ##select subzones for two-variable comparison
-  output$szSelectV2 <- renderUI({
-    t1 <- paste(input$BGCZone.chooseV2, collapse = "|")
-    tempChoose <- BGC.chooseBC
-    if(input$includeWNAV2 == "Yes"){tempChoose <- BGC.choose}
-    szChoose <- tempChoose[grep(t1,tempChoose)]
-    pickerInput("sz.chooseV2",
-                label = "Select Subzones",
-                choices = szChoose,
-                multiple = TRUE,
-                selected = szChoose, options = list(`actions-box` = TRUE))
-  })
-  
-  getCompDat <- reactive({
-    sz.pick <- input$sz.chooseV2
-    if(input$compNormPer %in% c("2025","2055","2085")){datLoc <- "climsum_fut_v12"}
-    else datLoc <- "climsum_curr_v12"
-    selectBC <- "BC"
-    if(input$includeWNAV2 == "Yes"){selectBC <- "US_AB"}
-    dat <- dbGetQuery(con, paste0("SELECT ",paste(c("bgc","period","var", input$xvar,input$yvar),collapse = ","),
-                                  " FROM climsum_curr_v12 WHERE var = 'mean' AND period = '1961 - 1990' AND bgc IN ('",paste(sz.pick,collapse = "','"),"')"))
-    dat <- as.data.table(dat)
-    if(input$compNormPer != "1961 - 1990"){
-      if(input$compNormPer %in% c("2025","2055","2085")){
-        q1 <- paste0("SELECT ",paste(c("bgc", input$xvar,input$yvar),collapse = ","),
-                     " FROM ",datLoc," WHERE var = 'mean' AND period = '",
-                     input$compNormPer, "' AND bgc IN ('",paste(sz.pick,collapse = "','"),
-                     "') AND scenario = 'rcp85' AND modset = 'Reduced'")
-      }else{
-        q1 <- paste0("SELECT ",paste(c("bgc", input$xvar,input$yvar),collapse = ","),
-                     " FROM ",datLoc," WHERE var = 'mean' AND period = '",
-                     input$compNormPer, "' AND bgc IN ('",paste(sz.pick,collapse = "','"),
-                     "')")
-      }
-      dat2 <- dbGetQuery(con, q1)
-      dat2 <- as.data.table(dat2)
-      setnames(dat2, c("bgc","v1_fut","v2_fut"))
-      
-      dat <- dat[dat2, on = "bgc"]
-    }
-    dat
-  })
-  
-  createTwoVar <- reactive({
-    if(!is.null(input$sz.chooseV2)){
-      dat <- as.data.table(getCompDat())
-      dat[,Zone := gsub("[[:lower:]]|[[:digit:]]","",bgc)]
-      dat[,Zone := as.factor(gsub("_.*","",Zone))]
-      tZone <- dat[,lapply(.SD,mean),by = .(Zone), .SDcols = -c("bgc","period","var")]
-      
-      if(input$compNormPer == "1961 - 1990"){
-        ggplot(dat, aes(x = get(input$xvar), y = get(input$yvar))) +
-          geom_label(aes(label = bgc,colour = Zone)) +
-          geom_point(data = tZone, aes(x = get(input$xvar), y = get(input$yvar), colour = Zone),size = 6)+
-          theme(panel.background = element_rect(fill = "white", colour = "black"), legend.position = "none")+
-          labs(x = input$xvar, y = input$yvar)
-      }else{
-        ggplot(dat, aes(x = get(input$xvar), y = get(input$yvar))) +
-          geom_label(aes(label = bgc,colour = Zone)) +
-          geom_point(data = tZone, aes(x = get(input$xvar), y = get(input$yvar), colour = Zone),size = 6)+
-          geom_segment(aes(x = get(input$xvar), y = get(input$yvar),xend = v1_fut, yend = v2_fut),
-                       arrow = arrow(length = unit(0.3,"cm")))+
-          geom_segment(data = tZone, aes(x = get(input$xvar), y = get(input$yvar),xend = v1_fut, yend = v2_fut),
-                       arrow = arrow(length = unit(0.3,"cm")), size = 2)+
-          theme(panel.background = element_rect(fill = "white", colour = "black"), legend.position = "none")+
-          labs(x = input$xvar, y = input$yvar)
-      }
-      
-    }
-  })
-  
-  output$twovar <- renderPlot({
-    print(createTwoVar())
-  }, height = 600)
-  
-  output$download2Var <- downloadHandler(
-    filename = function(){paste0("TwoVar_",input$yvar,"-",input$xvar,"_",input$compNormPer,".png")},
-    content = function(file){
-      ggsave(file,plot = createTwoVar(), device = "png", width = 7, height = 7, units = "in")
-    }
-  )
-  
-  ###Create UI for selecting climate summary and periods
-  output$periodSelect <- renderUI({
-      dropdown(
-        pickerInput("periodTS",
-                    label = "Sequential Normal Periods",
-                    choices = period.ts,
-                    multiple = TRUE,
-                    selected = c('1961 - 1990', '1991 - 2019', '2055'), options = list(`actions-box` = TRUE)),
-        pickerInput("periodOther",
-                    label = "Other Normal Periods",
-                    choices = period.other,
-                    multiple = TRUE,
-                    selected = NULL, options = list(`actions-box` = TRUE)),
-        circle = FALSE, label = "Period", status = "primary") 
-  })
-  
-  
-  ##UI for selecting zones
-  output$zoneSelect <- renderUI({
-    tempChoose <- zone.chooseBC
-    if(input$includeWNA == "Yes"){tempChoose <- zone.choose}
-    pickerInput(inputId = "BGCZone.choose",###Select BGCs
-                label = "Select Zones for Summary",
-                choices = tempChoose, 
-                selected = "IDF", multiple = TRUE)
-  })
-  
-  ##UI for selecting subzones
-  output$szSelect <- renderUI({
-    if(input$byZone != "Zone"){
-      t1 <- paste(input$BGCZone.choose, collapse = "|")
-      tempChoose <- BGC.chooseBC
-      if(input$includeWNA == "Yes"){tempChoose <- BGC.choose}
-      szChoose <- tempChoose[grep(t1,tempChoose)]
-      pickerInput("sz.choose",
-                  label = "Select Subzones",
-                  choices = szChoose,
-                  multiple = TRUE,
-                  selected = c('IDFdk3', 'IDFxh2'), options = list(`actions-box` = TRUE))
-    }
-  })
-  
-#############Table Summaries and Data Download#################### 
-  getData <- function(){
-    selectVars <- c(input$annual, input$seasonal, input$monthly)
-    selectPer <- c(input$periodTS, input$periodOther)
-    selectPerFut <- selectPer[selectPer %in% c("2025","2055","2085")]
-    ModSet <- input$ModSet
-    if(input$byZone == "Zone"){
-      selectBGC <- input$BGCZone.choose
-      tabCurr <- "zonesum_curr_v12"
-      tabFut <- "zonesum_fut_v12"
-      selectBC <- "BC"
-      if(input$includeWNA == "Yes"){selectBC <- "US_AB"}
-      q1 <- paste0("SELECT ",paste(c("bgc", "period","var", selectVars),collapse = ","),
-                   " FROM ",tabCurr," WHERE bgc IN ('",paste(selectBGC,collapse = "','"),
-                   "') AND period IN ('",paste(selectPer,collapse = "','"),"') AND location = '",selectBC,"'")
-      q2 <- paste0("SELECT ",paste(c("bgc", "period","var", selectVars),collapse = ","),
-                   " FROM ",tabFut," WHERE bgc IN ('",paste(selectBGC,collapse = "','"),
-                   "') AND period IN (",paste(selectPerFut,collapse = ","),") AND scenario = '",
-                   input$Scenario,"' AND modset = '",ModSet,"' AND location = '",selectBC,"'")
-    }else{
-      selectBGC <- input$sz.choose
-      tabCurr <- "climsum_curr_v12"
-      tabFut <- "climsum_fut_v12"
-      q1 <- paste0("SELECT ",paste(c("bgc", "period","var", selectVars),collapse = ","),
-                   " FROM ",tabCurr," WHERE bgc IN ('",paste(selectBGC,collapse = "','"),
-                   "') AND period IN ('",paste(selectPer,collapse = "','"),"')")
-      q2 <- paste0("SELECT ",paste(c("bgc", "period","var", selectVars),collapse = ","),
-                   " FROM ",tabFut," WHERE bgc IN ('",paste(selectBGC,collapse = "','"),
-                   "') AND period IN ('",paste(selectPerFut,collapse = "','"),"') AND scenario = '",
-                   input$Scenario,"' AND modset = '",ModSet,"'")
-    }
-    
-    if(length(selectVars) > 0){
-      climSubset <- dbGetQuery(con, q1)
-      futureSub <- dbGetQuery(con, q2)
-      ##browser()
-      climSubset <- as.data.table(rbind(climSubset, futureSub))
-    }
-    return(climSubset)
-  }
-  
-  ###function to create table of data
-  createTable <- reactive({
-    selectVars <- c(input$annual, input$seasonal, input$monthly)
-    selectPer <- c(input$periodTS, input$periodOther)
-    if(length(selectPer) > 0 & length(selectVars) > 0){
-      climSubset <- getData()
-      #browser()
-      molten <- melt(climSubset,id.vars = c("bgc","period","var"))
-      reShape <- dcast(molten, period+var+variable~bgc)
-      setorder(reShape,variable)
-      setnames(reShape, old = c("period","var","variable"), new = c("TimePeriod","Statistic","ClimateVar"))
-      setcolorder(reShape,c(c(1,3,2,4:length(reShape))))
-      return(reShape)
-    }
-  })
-  
-  
-  output$table <- renderTable({
-    selectVars <- c(input$annual, input$seasonal, input$monthly)
-    selectPer <- c(input$periodTS, input$periodOther)
-    if(length(selectPer) > 0 & length(selectVars) > 0){
-      climSubset <- getData()
-      molten <- melt(climSubset, id.vars = c("bgc","period","var"))
-      if(input$dataForm == "BGCs as Columns"){
-        reShape <- dcast(molten, period+var+variable~bgc)
-        setorder(reShape,variable)
-        setnames(reShape, old = c("period","var","variable"), new = c("TimePeriod","Statistic","ClimateVar"))
-        setcolorder(reShape,c(c(1,3,2,4:length(reShape))))
-      }else{
-        reShape <- dcast(molten, bgc+var+variable~period)
-        setorder(reShape,variable)
-        setnames(reShape, old = c("period","var","variable"), new = c("TimePeriod","Statistic","ClimateVar"))
-        reShape <- reShape[,c(1,3,2,4:length(reShape))]
-      }
-      
-      reShape <- as.data.frame(reShape)
-      return(reShape)
-    }
-   })
-  
-  ###Download data
-  output$downloadTable <- downloadHandler(
-    filename = "ClimateSummary.csv",
-    content = function(file){
-      write.csv(createTable(), file)
-    }
-  )
-  
-  ###create main summary plots
-  summaryPlots <- reactive({
-    plots <- list()
-    selectVars <- c(input$annual, input$seasonal, input$monthly)
-    selectPer <- c(input$periodTS, input$periodOther)
-    for(i in 1:length(selectVars)){
-      
-      name <- selectVars[i]
-      if (length(selectVars) > 0 & length(selectPer) > 0){
-        data <- createTable()
-        if(input$grType == "Bar" | input$grType == "Line"){
-          graph <- data[ClimateVar == selectVars[i] & 
-                          (Statistic == "mean" | Statistic == input$Error | Statistic == input$futError),]
-          graph[,Statistic := fifelse(Statistic != "mean", "StDev", "mean")]
-          graph[,ClimateVar := NULL]
-          graph <- melt(graph,id.vars = c("TimePeriod","Statistic"))
-          graph <- dcast(graph, variable+TimePeriod~Statistic)
-          setnames(graph,old = c("variable","TimePeriod","StDev","mean"), new = c("BGC","Period","Error","Mean"))
-          setorder(graph,Period)
-          if(input$grType == "Bar"){
-            graph[,Period := as.factor(Period)]
-            plots[[i]] <- ggplot(graph, aes(x = BGC, y = Mean, fill = Period)) +
-              geom_bar(position = position_dodge(), stat = "identity") +
-              geom_errorbar(aes(ymin = Mean - Error, ymax = Mean + Error), width = 0.2, 
-                            position = position_dodge(0.9))+ theme_bw() + 
-              theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank()) +
-              ggtitle(selectVars[i]) + labs(x = "BGC")
-          }else{
-            graph$Period <- as.character(graph$Period)
-            graph$Period <- as.numeric(substring(graph$Period, first = 1, last = 4))
-            plots[[i]] <- ggplot(graph, aes(x = Period, y = Mean, colour = BGC))+
-              geom_line()+
-              geom_ribbon(aes(ymin = Mean - Error, ymax = Mean + Error), linetype = 2, alpha = 0.1)+
-              theme_bw() + theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())+
-              ggtitle(selectVars[i]) + labs(x = "First Year of Normal Period", y = "")
-          }
-        }else{
-          graph <- data[ClimateVar == selectVars[i] & Statistic %in% c("mean","max","min","10%","90%",input$Error,input$futError),]
-          graph[,Statistic := fifelse(Statistic %chin% c(input$Error, input$futError), "StDev", Statistic)]
-          graph[,ClimateVar := NULL]
-          graph <- melt(graph, id.vars = c("TimePeriod","Statistic"))
-          graph <- dcast(graph, variable+TimePeriod~Statistic)
-          setnames(graph, old = c("variable","TimePeriod"), new = c("BGC","Period"))
-          setorder(graph, Period)
-          
-          graph[,Period := as.numeric(substring(as.character(Period), first = 1, last = 4))]
-          graph[,BGC := as.factor(BGC)]
-          plots[[i]] <- ggplot(graph, aes(x = Period, lower = `10%`, upper = `90%`, middle = mean, 
-                            ymin = min, ymax = max,group = 1:(length(selectPer)*length(unique(graph$BGC))), color = BGC))+
-            geom_boxplot(stat = "identity", position = "dodge")+
-            theme_bw() + theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())+
-            ggtitle(selectVars[i]) + labs(x = "First Year of Normal Period")
-        }
-      } 
-    }
-    return(plots)
-  })
-  
-  pHeight <- reactive({
-    selectVars <- c(input$annual, input$seasonal, input$monthly)
-    print(length(selectVars))
-    return(400*(ceiling((length(selectVars))/2)))
-  })
-  
-  observe({
-    output$sumPlots <- renderPlot({
-      ptlist <- summaryPlots()
-      to_delete <- !sapply(ptlist,is.null)
-      ptlist <- ptlist[to_delete] 
-      if (length(ptlist)==0) return(NULL)
-      
-      grid.arrange(grobs=ptlist,ncol=2)
-    }, height = pHeight())
-  })
-  
-  ##download summary plots
-  output$downloadSumPlots <- downloadHandler(
-    filename = function(){
-      if(input$includeWNA == "Yes"){
-        "WNA_ClimateSummaryPlots.png"
-      }else{
-        "BC_ClimateSummaryPlots.png"
-      }
-    },
-    content = function(file){
-      ptlist <- summaryPlots()
-      to_delete <- !sapply(ptlist,is.null)
-      ptlist <- ptlist[to_delete] 
-      if (length(ptlist)==0) return(NULL)
-      plts <- arrangeGrob(grobs=ptlist,ncol=2)
-      ggsave(file,plot = plts,device = "png",units = "in", width = 12, height = pHeight()/64)
-    }
-  )
+  source("./Server/Server_Summaries.R",local = T)
+  source("./Server/Server_TwoVar.R",local = T)
+  source("./Server/Server_Station.R",local = T)
 
-  ###prepare data for walter chart 
-  walterPrep <- reactive({
-    loc <- "BC"
-    if(input$includeWNA == "Yes"){loc <- "US_AB"}
-      if(input$byZone == "Zone"){
-        BGC <- input$BGCZone.choose[1]
-        tab <- "zonesum_fut_v12"
-      }else{
-        BGC <- input$sz.choose[1]
-        tab <- "climsum_fut_v12"
-      }
-      x1 <- dbGetQuery(con, paste0("SELECT * FROM ",tab," WHERE bgc = '",
-                                                BGC,"' AND period = 2025 
-                                   AND scenario = '",input$Scenario,"' 
-                                   AND modset = '",input$ModSet,"'
-                                   AND var = 'mean'
-                                   AND location = '",loc,"'"))
-      ppt=x1[,c(paste("ppt0",1:9,sep=""),paste("ppt",10:12,sep=""))]	
-      tmx=x1[,c(paste("tmax0",1:9,sep=""),paste("tmax",10:12,sep=""))]	
-      tmn=x1[,c(paste("tmin0",1:9,sep=""),paste("tmin",10:12,sep=""))]	
-      tmn2=x1[,c(paste("dd_0_0",1:9,sep=""),paste("dd_0_",10:12,sep=""))]	
-      tmn2[tmn2>0] <- -16
-      tmn2[tmn2==0] <- 15
-      waltMat <- rbind(as.matrix(ppt),as.matrix(tmx),
-                       as.matrix(tmn),as.matrix(tmn2))
-      return(waltMat)
-
-  })
-  
-  output$walterPlot <- renderPlot({
-    if(!is.null(input$BGCZone.choose)){
-      diagwl(walterPrep(), mlab="en", p3line=F, est=input$BGC.choose[1], per=2025)
-    }
-  })
-  
-################Station data######################################
-  ###Create html list to catch station plots
-  output$stnPlots <- renderUI({
-    stnVars <- input$var.pick
-    stnPlotOutput <- lapply(1:length(stnVars), function(j){
-      plotname <- paste("StnPlot", j, sep= "")
-      plotOutput(plotname, height = "400px", width = "100%")
-    })
-    do.call(tagList, stnPlotOutput)
-  })
-  
-  stPrepGraph <- reactive({
-    modelSub <- dbGetQuery(con, paste0("SELECT ",paste(c("station","bgc", input$var.pick),collapse = ","),
-                                       " FROM stpoints_mod81 WHERE station IN ('",
-                                       paste(input$stn.pick,collapse = "','"),"')"))
-    modelSub$Type <- "Model"
-    m.oldSub <- dbGetQuery(con, paste0("SELECT ",paste(c("station","bgc", input$var.pick),collapse = ","),
-                                       " FROM stpoints_mod61 WHERE station IN ('",
-                                       paste(input$stn.pick,collapse = "','"),"')"))
-    m.oldSub$Type <- "Model61-90"
-    stationSub <- dbGetQuery(con, paste0("SELECT ",paste(c("station","bgc", input$var.pick),collapse = ","),
-                                         " FROM st_summary WHERE station IN ('",
-                                         paste(input$stn.pick,collapse = "','"),"')"))
-    stationSub$Type <- "Station"
-    dat <- rbind(modelSub,stationSub,m.oldSub)
-    dat <- dat[order(dat$station),]
-    dat$Type <- as.factor(dat$Type)
-    return(dat)
-  })
-  
-  
-for (j in 1:50){
-    
-    local({
-      my_j <- j
-      
-      plotname <- paste("StnPlot", my_j, sep= "")
-
-      output[[plotname]] <- renderPlot({
-        input$removeNA
-        if(length(input$stn.pick) > 0 & length(input$var.pick) > 0){
-          dat <- stPrepGraph()
-          dat <- dat[,c("station","Type","bgc",input$var.pick[my_j])] %>% 
-            set_colnames(c("Station","Type","BGC","Mean"))
-          dat2 <- dcast(dat, Station + BGC ~ Type, value.var = "Mean", fun.aggregate = mean)
-          colnames(dat2)[1] <- "ID"
-          dat2$Diff <- apply(dat2[,c("Model","Station")],1,FUN = function(x){(1-(min(x)/max(x)))*100})
-          dat2$Diff[is.na(dat2$Diff)] <- 0
-          dat <- dat[dat$Station %in% dat2$ID[dat2$Diff >= input$maxDiff],]
-          
-          if(input$removeNA %% 2 == 0){
-            stNAs <- as.character(dat$Station[is.na(dat$Mean)])
-            dat <- dat[!dat$Station %in% stNAs,]
-          }
-          if(input$showNorm %% 2 == 0){
-            dat <- dat[dat$Type != "Model61-90",]
-          }
-          
-        dat <- unique(dat)
-        ggplot(dat, aes(x = Station, y = Mean, fill = Type)) +
-          geom_bar(position = position_dodge(), stat = "identity", color = "black") +
-          scale_fill_manual(values = c("Model" = "black","Station" = "grey","Model61-90" = "white"))+
-          facet_grid(.~BGC, scales = "free_x",space = "free_x")+
-          theme_bw() + theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank())+
-          {if(length(dat$Station) > 12)theme(axis.text.x = element_text(angle = 90, hjust = 1))}+
-          ggtitle(input$var.pick[my_j])
-        }
-        
-      })
-    })
-  }
-  
-  ###function to clean station data
-  stnDat <- reactive({
-    stationSub <- dbGetQuery(con, paste0("SELECT ",paste(c("station","name","bgc","latitude",
-                                                           "longitude","elevation",input$var.pick),collapse = ","),
-                                         " FROM st_summary WHERE station IN ('",
-                                         paste(input$stn.pick,collapse = "','"),"')"))
-    ##stationSub <- stationSub[rowSums(stationSub[,-c(1:6)], na.rm = TRUE) != 0,]
-    modelSub <- dbGetQuery(con, paste0("SELECT ",paste(c("station", input$var.pick),collapse = ","),
-                                       " FROM stpoints_mod81 WHERE station IN ('",
-                                       paste(input$stn.pick,collapse = "','"),"')"))
-    modelSub <- unique(modelSub)
-    stnBoth <- merge(stationSub, modelSub, by = "station", suffixes = c("_Station","_Model"), all.x = TRUE)
-    colnames(stnBoth)[1] <- "St_ID"
-    stnBoth <- stnBoth[stnBoth$St_ID %in% unique(stnBoth$St_ID),]
-    stnBoth <- stnBoth[order(stnBoth$name),]
-    return(stnBoth)
-  })
-  
-  ###create plot with density distributions showing difference between station and model data
-  output$diffDens <- renderPlot({
-    if(length(input$stn.pick) > 0 & length(input$var.pick) > 0){
-      stnBoth <- stnDat()[,-c(3:6)]
-      stnBoth <- melt(stnBoth, id.vars = c("St_ID","name"))
-      stnBoth$Type <- ifelse(grepl("Station",stnBoth$variable), "Station","Model")
-      stnBoth$variable <- gsub("_Station|_Model","",stnBoth$variable)
-      stnBoth <- stnBoth[!is.na(stnBoth$value),]
-      diffFun <- function(x){
-        return (x[1]-x[2])
-      }
-      temp <- dcast(stnBoth, St_ID + name ~ variable, value.var = "value", fun.aggregate = diffFun)
-      temp <- melt(temp, id.vars = c("St_ID","name"))
-      ggplot(temp)+
-        stat_density(aes(x = value, y = ..scaled.., fill = variable), alpha = 0.25)+
-        ##xlim(c(-1.5,1.5))+
-        labs(x = "Difference", y = "Density")
-    }
-    
-  })
-  
-  output$downloadStn <- downloadHandler(
-    filename = "ClimStation.csv",
-    content = function(file){
-      write.csv(stnDat(), file, row.names = FALSE)
-    }
-  )
-
-  ##only show stations as choices that are in that BGC
-  output$selectStn <- renderUI({
-    BGC <- input$StnBGC.pick
-    BGC <- paste("stn.",BGC, sep = "")
-    sts <- foreach(i = 1:length(BGC), .combine = c) %do% {
-      stn.list[[BGC[i]]]
-    }
-    pickerInput("stn.pick","Select Stations", 
-                choices = sts, 
-                multiple = TRUE, 
-                selected = sts, 
-                options = list(`actions-box` = TRUE))
-  })
-  
-  stPrepMap <- reactive({
-    if(length(input$var.pick) > 0){
-      foreach(currVar = input$var.pick, .combine = rbind) %do% {
-        stationSub <- dbGetQuery(con, paste0("SELECT ",paste(c("station","latitude",
-                                                               "longitude","bgc",currVar),collapse = ","),
-                                             " FROM st_summary WHERE station IN ('",
-                                             paste(input$stn.pick,collapse = "','"),"')"))
-        colnames(stationSub)[c(1,5)] <- c("Station","Mean")
-        stationSub$Type <- "Station"
-        stNames <- dbGetQuery(con, "SELECT DISTINCT station,name FROM st_summary")
-        if(input$mapType == "Mean"){
-          modelSub <- dbGetQuery(con, paste0("SELECT ",paste(c("bgc", currVar),collapse = ","),
-                                             " FROM climsum_curr_v11 WHERE period = '1961 - 1990' AND bgc IN ('",
-                                             paste(input$StnBGC.pick,collapse = "','"),"')"))
-          colnames(modelSub)[2] <- "BGCMean"
-          dat2 <- merge(stationSub, modelSub, by = "bgc", all.x = T)
-          dat2$Diff <- dat2$BGCMean - dat2$Mean
-        }else{
-          modelSub <- dbGetQuery(con, paste0("SELECT ",paste(c("station", "latitude","longitude","bgc", 
-                                                               currVar),collapse = ","),
-                                             " FROM stpoints_mod81 WHERE station IN ('",
-                                             paste(input$stn.pick,collapse = "','"),"')"))
-          colnames(modelSub)[c(1,5)] <- c("Station","Mean")
-          modelSub$Type <- "Model"
-          dat <- rbind(modelSub,stationSub)
-          dat <- dat[order(dat$Station),]
-          dat <- merge(dat,stNames, by.x = "Station", by.y = "station", all.x = TRUE)
-          dat$Type <- as.factor(dat$Type)
-          dat2 <- dcast(dat, Station + latitude + longitude + bgc + name ~ Type, value.var = "Mean", 
-                        fun.aggregate = mean) ## shouldn't actually need to aggregate
-          colnames(dat2)[1] <- "ID"
-          dat2$Diff <- apply(dat2[,c("Model","Station")],1,FUN = function(x){((max(x)-min(x))/max(x))*100})
-        }
-        dat2$Diff[is.na(dat2$Diff)] <- 999
-        dat2 <- dat2[dat2$Diff > input$maxDiff,]
-        dat2 <- unique(dat2)
-        dat2$Var = currVar
-        dat2
-      }
-      
-    }else{NULL}
-    
-  })
-  
-  output$stnDiffMap <- renderLeaflet({
-    dat <- stPrepMap()
-    dat <- dat[dat$Diff != 999,]
-    dat$Var <- as.factor(dat$Var)
-    ##browser()
-    if(is.data.frame(dat)){
-      leaflet() %>%
-        addProviderTiles("CartoDB.Positron") %>%
-        addProviderTiles("Esri.WorldImagery", group = "Satellite") %>%
-        addLayersControl(baseGroups = c("Default", "Satellite"), options = layersControlOptions(collapsed = FALSE)) %>%
-        addAwesomeMarkers(data = dat, ~longitude, ~latitude, icon = icons,
-                          popup = paste0("<b>", dat$ID, "</b>", "<br>",
-                                         "Variable: ", dat$Var, "<br>",
-                                         "BGC: ", dat$bgc, "<br>",
-                                         "Difference: ", round(dat$Diff, digits = 2), "<br>"))
-    }
-    
-  })
-  
-  getMapData <- reactive({
-    dat <- dbGetQuery(con, paste0("SELECT longitude,latitude,gcm,scenario,future,",input$mapVar," FROM map_grid"))
-    colnames(dat)[6] <- "Var"
-    dat <- dat[dat[,6] > -2000,]
-    dat
-  })
-  
-  output$climMap <- renderPlot({
-    dat <- getMapData()
-    dat <- dat[(dat$gcm %in% c(input$mapMod,"Current")) & (dat$scenario %in% c(input$mapScn,"")),]
-    dat <- unique(dat)
-    ##browser()
-    dat <- dcast(dat, longitude + latitude ~ future, value.var = "Var")
-    dat <- st_as_sf(dat, coords = c("longitude","latitude"), crs = 4326, agr = "constant")
-    plot(dat, pch = 16, cex = 0.3, key.pos = 1)
-  })
-  
-  output$climDiff <- renderPlot({
-    dat <- getMapData()
-    dat <- dat[dat$gcm %in% c(input$mapMod, "Current") & (dat$scenario %in% c(input$mapScn,"")) & dat$future %in% c(2010,input$futForDiff),]
-    dat <- unique(dat)
-    dat <- dcast(dat, longitude + latitude ~ future, value.var = "Var")
-    colnames(dat)[3:4] <- c("Current","Future")
-    dat$Diff <- dat$Future - dat$Current
-    dat <- dat[,c("longitude","latitude","Diff")]
-    dat <- st_as_sf(dat, coords = c("longitude","latitude"), crs = 4326, agr = "constant")
-    plot(dat, pch = 16, cex = 0.3, key.pos = 1)
-  })
-  
   onStop(function() {
+    dbClearResult(dbListResults(con)[[1]])
     dbDisconnect(conn = con)
   })
-
 
 }
 
 # Run the application 
 shinyApp(ui = ui, server = server)
 
+# getMapData <- reactive({
+#   dat <- dbGetQuery(con, paste0("SELECT longitude,latitude,gcm,scenario,future,",input$mapVar," FROM map_grid"))
+#   colnames(dat)[6] <- "Var"
+#   dat <- dat[dat[,6] > -2000,]
+#   dat
+# })
+# 
+# output$climMap <- renderPlot({
+#   dat <- getMapData()
+#   dat <- dat[(dat$gcm %in% c(input$mapMod,"Current")) & (dat$scenario %in% c(input$mapScn,"")),]
+#   dat <- unique(dat)
+#   ##browser()
+#   dat <- dcast(dat, longitude + latitude ~ future, value.var = "Var")
+#   dat <- st_as_sf(dat, coords = c("longitude","latitude"), crs = 4326, agr = "constant")
+#   plot(dat, pch = 16, cex = 0.3, key.pos = 1)
+# })
+# 
+# output$climDiff <- renderPlot({
+#   dat <- getMapData()
+#   dat <- dat[dat$gcm %in% c(input$mapMod, "Current") & (dat$scenario %in% c(input$mapScn,"")) & dat$future %in% c(2010,input$futForDiff),]
+#   dat <- unique(dat)
+#   dat <- dcast(dat, longitude + latitude ~ future, value.var = "Var")
+#   colnames(dat)[3:4] <- c("Current","Future")
+#   dat$Diff <- dat$Future - dat$Current
+#   dat <- dat[,c("longitude","latitude","Diff")]
+#   dat <- st_as_sf(dat, coords = c("longitude","latitude"), crs = 4326, agr = "constant")
+#   plot(dat, pch = 16, cex = 0.3, key.pos = 1)
+# })
