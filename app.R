@@ -24,26 +24,27 @@ require(gridExtra)
 ###Read in climate summary data
 drv <- dbDriver("PostgreSQL")
 sapply(dbListConnections(drv), dbDisconnect)
-con <- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "68.183.199.104", port = 5432, dbname = "bgc_climate_data") ##  eXTERNAL USE
+con <- dbConnect(drv, user = "postgres", password = "postgres", host = "138.197.168.220", 
+                 port = 5432, dbname = "bgc_climate_data") ##  eXTERNAL USE
 
 ####Set up choices
-BGC.choose <- dbGetQuery(con, "SELECT DISTINCT bgc from climsum_curr_v12 where bgc <> '' ORDER BY bgc")$bgc
-BGC.chooseBC <- dbGetQuery(con, "SELECT DISTINCT bgc from climsum_curr_v12 where location = 'BC' AND bgc <> '' ORDER BY bgc")$bgc
-period.choose <- dbGetQuery(con, "SELECT DISTINCT period FROM climsum_curr_v12")$period
-period.ts <- c("1901 - 1930","1931 - 1960","1961 - 1990","1991 - 2019","2025","2055","2085")
+BGC.choose <- dbGetQuery(con, "SELECT DISTINCT bgc from szsum_curr where bgc <> '' ORDER BY bgc")$bgc
+BGC.chooseBC <- dbGetQuery(con, "SELECT DISTINCT bgc from szsum_curr where region = 'BC' AND bgc <> '' ORDER BY bgc")$bgc
+period.choose <- dbGetQuery(con, "SELECT DISTINCT period FROM szsum_curr")$period
+fp.choose <- dbGetQuery(con, "SELECT DISTINCT period FROM zonesum_fut")$period
+period.ts <- c("1901 - 1930","1931 - 1960","1961 - 1990","1991 - 2020","2021-2040",
+               "2041-2060","2061-2080","2081-2100")
 period.other <- period.choose[!period.choose %in% period.ts]
-stat.choose <- dbGetQuery(con, "SELECT DISTINCT var FROM climsum_curr_v12")$var
-var.choose <- dbGetQuery(con, "SELECT column_name FROM information_schema.columns 
-                         WHERE table_name = 'climsum_curr_v12'")[,1]
-var.choose <- var.choose[!var.choose %in% c("period","var","bgc")]
+stat.choose <- dbGetQuery(con, "SELECT DISTINCT stat FROM szsum_curr")$var
+var.choose <- dbGetQuery(con, "SELECT distinct climvar from zonesum_curr")[,1]
 monthly <- var.choose[grep("01|02|03|04|05|06|07|08|09|10|11|12", var.choose)]
 seasonal <- var.choose[grep("_sp|_sm|_at|_wt", var.choose)]
 seasonalShort <- seasonal[grep("PPT|RAD|Tave|Tmin|Tmax", seasonal)]
 annual <- var.choose[!var.choose %in% c(monthly,seasonal)]
-zone.choose <- dbGetQuery(con, "SELECT DISTINCT bgc FROM zonesum_curr_v12 ORDER BY bgc")$bgc
-zone.chooseBC <- dbGetQuery(con, "SELECT DISTINCT bgc FROM zonesum_curr_v12 WHERE location = 'BC' ORDER BY bgc")$bgc
+zone.choose <- dbGetQuery(con, "SELECT DISTINCT bgc FROM zonesum_curr ORDER BY bgc")$bgc
+zone.chooseBC <- dbGetQuery(con, "SELECT DISTINCT bgc FROM zonesum_curr WHERE region = 'BC' ORDER BY bgc")$bgc
 annualDirect <- c("MAT","MWMT","MCMT","TD","MAP","MSP","AHM","SHM")
-futScn <- c("rcp45","rcp85")
+futScn <- dbGetQuery(con,"SELECT DISTINCT scenario from zonesum_fut")[,1]
 for(i in 1:length(zone.choose)){
   name <- paste(zone.choose[i],".choose", sep = "")
   temp <- BGC.choose[grep(zone.choose[i],BGC.choose)]
@@ -66,11 +67,6 @@ stn.var <- dbGetQuery(con, "SELECT column_name FROM information_schema.columns
 
 stnDiff.var <- dbGetQuery(con, "SELECT column_name FROM information_schema.columns 
                          WHERE table_name = 'stmod_diff'")[-c(1:6),1]
-mapVar.choose <- dbGetQuery(con, "SELECT column_name FROM information_schema.columns 
-                         WHERE table_name = 'map_grid'")[-c(1:5),1]
-mapMod.choose <- dbGetQuery(con, "SELECT DISTINCT gcm FROM map_grid ORDER BY gcm")[,1]
-mapFut.choose <- c(2025,2055,2085)
-mapScn.choose <- c("rcp45","rcp85")
 
 load("./inputs/StationList.Rdata")
 # stn.list <- list()
