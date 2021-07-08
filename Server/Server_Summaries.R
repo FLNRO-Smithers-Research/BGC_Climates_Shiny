@@ -27,33 +27,28 @@ observe({
 getData <- reactive({
   selectVars <- c(input$annual, input$seasonal, input$monthly)
   selectPer <- c(input$periodTS, input$periodOther)
-  selectPerFut <- selectPer[selectPer %in% c("2025","2055","2085")]
+  selectPerFut <- selectPer[selectPer %in% fp.choose]
   ModSet <- input$ModSet
   if(input$byZone == "Zone"){
     selectBGC <- input$BGCZone.choose
-    tabCurr <- "zonesum_curr_v12"
-    tabFut <- "zonesum_fut_v12"
-    selectBC <- "BC"
-    if(input$includeWNA == "Yes"){selectBC <- "US_AB"}
-    q1 <- paste0("SELECT ",paste(c("bgc", "period","var", selectVars),collapse = ","),
-                 " FROM ",tabCurr," WHERE bgc IN ('",paste(selectBGC,collapse = "','"),
-                 "') AND period IN ('",paste(selectPer,collapse = "','"),"') AND location = '",selectBC,"'")
-    q2 <- paste0("SELECT ",paste(c("bgc", "period","var", selectVars),collapse = ","),
-                 " FROM ",tabFut," WHERE bgc IN ('",paste(selectBGC,collapse = "','"),
-                 "') AND period IN (",paste(selectPerFut,collapse = ","),") AND scenario = '",
-                 input$Scenario,"' AND modset = '",ModSet,"' AND location = '",selectBC,"'")
+    tabCurr <- "zonesum_curr"
+    tabFut <- "zonesum_fut"
   }else{
     selectBGC <- input$sz.choose
-    tabCurr <- "climsum_curr_v12"
-    tabFut <- "climsum_fut_v12"
-    q1 <- paste0("SELECT ",paste(c("bgc", "period","var", selectVars),collapse = ","),
-                 " FROM ",tabCurr," WHERE bgc IN ('",paste(selectBGC,collapse = "','"),
-                 "') AND period IN ('",paste(selectPer,collapse = "','"),"')")
-    q2 <- paste0("SELECT ",paste(c("bgc", "period","var", selectVars),collapse = ","),
-                 " FROM ",tabFut," WHERE bgc IN ('",paste(selectBGC,collapse = "','"),
-                 "') AND period IN ('",paste(selectPerFut,collapse = "','"),"') AND scenario = '",
-                 input$Scenario,"' AND modset = '",ModSet,"'")
+    tabCurr <- "szsum_curr"
+    tabFut <- "szsum_fut"
   }
+    selectBC <- "BC"
+    if(input$includeWNA == "Yes"){selectBC <- "WNA"}
+    q1 <- paste0("SELECT bgc, period,stat, climvar, value FROM ",
+                 tabCurr," WHERE bgc IN ('",paste(selectBGC,collapse = "','"),
+                 "') AND period IN ('",paste(selectPer,collapse = "','"),"') AND climvar IN ('",
+                 paste(selectVars,collapse = "','"),"') AND region = '",selectBC,"'")
+    q2 <- paste0("SELECT bgc, period,stat, climvar, value FROM ",
+                 tabFut," WHERE bgc IN ('",paste(selectBGC,collapse = "','"),
+                 "') AND period IN (",paste(selectPerFut,collapse = ","),") AND scenario = '",
+                 input$Scenario,"' AND climvar IN ('",
+                 paste(selectVars,collapse = "','"),"') AND region = '",selectBC,"'")
   
   if(length(selectVars) > 0){
     climSubset <- tryCatch({
@@ -62,8 +57,8 @@ getData <- reactive({
     error = function(e){
       dbClearResult(dbListResults(con)[[1]])
       invisible(lapply(dbListConnections(PostgreSQL()), dbDisconnect))
-      con <<- dbConnect(drv, user = "postgres", password = "Kiriliny41", host = "68.183.199.104", 
-                        port = 5432, dbname = "bgc_climate_date")
+      con <<- dbConnect(drv, user = "postgres", password = "postgres", host = "138.197.168.220", 
+                        port = 5432, dbname = "bgc_climate_data")
       dat <- dbGetQuery(con, q1)
       return(dat)
     })
@@ -80,12 +75,10 @@ createTable <- reactive({
   selectPer <- c(input$periodTS, input$periodOther)
   if(length(selectPer) > 0 & length(selectVars) > 0){
     climSubset <- getData()
-    #browser()
-    molten <- melt(climSubset,id.vars = c("bgc","period","var"))
-    reShape <- dcast(molten, period+var+variable~bgc)
-    setorder(reShape,variable)
-    setnames(reShape, old = c("period","var","variable"), new = c("TimePeriod","Statistic","ClimateVar"))
-    setcolorder(reShape,c(c(1,3,2,4:length(reShape))))
+    reShape <- dcast(climSubset, period+stat+climvar~bgc)
+    setorder(reShape,climvar)
+    setnames(reShape, old = c("period","stat","climvar"), new = c("TimePeriod","Statistic","ClimateVar"))
+    setcolorder(reShape,c(1,3,2,4:length(reShape)))
     return(reShape)
   }
 })
@@ -220,20 +213,20 @@ output$downloadSumPlots <- downloadHandler(
 ###prepare data for walter chart 
 walterPrep <- reactive({
   loc <- "BC"
-  if(input$includeWNA == "Yes"){loc <- "US_AB"}
+  if(input$includeWNA == "Yes"){loc <- "WNA"}
   if(input$byZone == "Zone"){
     BGC <- input$BGCZone.choose[1]
-    tab <- "zonesum_fut_v12"
+    tab <- "zonesum_curr"
   }else{
     BGC <- input$sz.choose[1]
-    tab <- "climsum_fut_v12"
+    tab <- "szsum_curr"
   }
   x1 <- dbGetQuery(con, paste0("SELECT * FROM ",tab," WHERE bgc = '",
-                               BGC,"' AND period = 2025 
-                                   AND scenario = '",input$Scenario,"' 
-                                   AND modset = '",input$ModSet,"'
-                                   AND var = 'mean'
-                                   AND location = '",loc,"'"))
+                               BGC,"' AND period = '2001 - 2020' 
+                                   AND stat = 'mean'
+                                   AND region = '",loc,"'"))
+  x1 <- as.data.table(x1)
+  x1 <- dcast(x1, bgc ~ climvar)
   ppt=x1[,c(paste("ppt0",1:9,sep=""),paste("ppt",10:12,sep=""))]	
   tmx=x1[,c(paste("tmax0",1:9,sep=""),paste("tmax",10:12,sep=""))]	
   tmn=x1[,c(paste("tmin0",1:9,sep=""),paste("tmin",10:12,sep=""))]	
