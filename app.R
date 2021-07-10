@@ -28,23 +28,23 @@ con <- dbConnect(drv, user = "postgres", password = "postgres", host = "138.197.
                  port = 5432, dbname = "bgc_climate_data") ##  eXTERNAL USE
 
 ####Set up choices
-BGC.choose <- dbGetQuery(con, "SELECT DISTINCT bgc from szsum_curr where bgc <> '' ORDER BY bgc")$bgc
-BGC.chooseBC <- dbGetQuery(con, "SELECT DISTINCT bgc from szsum_curr where region = 'BC' AND bgc <> '' ORDER BY bgc")$bgc
-period.choose <- dbGetQuery(con, "SELECT DISTINCT period FROM szsum_curr")$period
-fp.choose <- dbGetQuery(con, "SELECT DISTINCT period FROM zonesum_fut")$period
+BGC.choose <- dbGetQuery(con, "SELECT bgc from bgcall")$bgc
+BGC.chooseBC <- dbGetQuery(con, "SELECT bgc from bgcall where region = 'BC'")$bgc
+period.choose <- dbGetQuery(con, "SELECT period from periodhist")$period
+fp.choose <- dbGetQuery(con, "SELECT period from periodfut")$period
 period.ts <- c("1901 - 1930","1931 - 1960","1961 - 1990","1991 - 2020","2021-2040",
                "2041-2060","2061-2080","2081-2100")
 period.other <- period.choose[!period.choose %in% period.ts]
-stat.choose <- dbGetQuery(con, "SELECT DISTINCT stat FROM szsum_curr")$var
-var.choose <- dbGetQuery(con, "SELECT distinct climvar from zonesum_curr")[,1]
+stat.choose <- dbGetQuery(con, "SELECT stat from statopts")$stat
+var.choose <- dbGetQuery(con, "SELECT climvar from climvaropts")[,1]
 monthly <- var.choose[grep("01|02|03|04|05|06|07|08|09|10|11|12", var.choose)]
 seasonal <- var.choose[grep("_sp|_sm|_at|_wt", var.choose)]
 seasonalShort <- seasonal[grep("PPT|RAD|Tave|Tmin|Tmax", seasonal)]
 annual <- var.choose[!var.choose %in% c(monthly,seasonal)]
-zone.choose <- dbGetQuery(con, "SELECT DISTINCT bgc FROM zonesum_curr ORDER BY bgc")$bgc
-zone.chooseBC <- dbGetQuery(con, "SELECT DISTINCT bgc FROM zonesum_curr WHERE region = 'BC' ORDER BY bgc")$bgc
+zone.choose <- dbGetQuery(con, "SELECT bgc FROM zoneall")$bgc
+zone.chooseBC <- dbGetQuery(con, "SELECT bgc FROM zoneall WHERE region = 'BC'")$bgc
 annualDirect <- c("MAT","MWMT","MCMT","TD","MAP","MSP","AHM","SHM")
-futScn <- dbGetQuery(con,"SELECT DISTINCT scenario from zonesum_fut")[,1]
+futScn <- c("ssp126","ssp245","ssp370","ssp585")
 for(i in 1:length(zone.choose)){
   name <- paste(zone.choose[i],".choose", sep = "")
   temp <- BGC.choose[grep(zone.choose[i],BGC.choose)]

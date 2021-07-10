@@ -46,7 +46,7 @@ getData <- reactive({
                  paste(selectVars,collapse = "','"),"') AND region = '",selectBC,"'")
     q2 <- paste0("SELECT bgc, period,stat, climvar, value FROM ",
                  tabFut," WHERE bgc IN ('",paste(selectBGC,collapse = "','"),
-                 "') AND period IN (",paste(selectPerFut,collapse = ","),") AND scenario = '",
+                 "') AND period IN ('",paste(selectPerFut,collapse = "','"),"') AND scenario = '",
                  input$Scenario,"' AND climvar IN ('",
                  paste(selectVars,collapse = "','"),"') AND region = '",selectBC,"'")
   
@@ -75,7 +75,7 @@ createTable <- reactive({
   selectPer <- c(input$periodTS, input$periodOther)
   if(length(selectPer) > 0 & length(selectVars) > 0){
     climSubset <- getData()
-    reShape <- dcast(climSubset, period+stat+climvar~bgc)
+    reShape <- dcast(climSubset, period+stat+climvar~bgc, fun.aggregate = mean)
     setorder(reShape,climvar)
     setnames(reShape, old = c("period","stat","climvar"), new = c("TimePeriod","Statistic","ClimateVar"))
     setcolorder(reShape,c(1,3,2,4:length(reShape)))
